@@ -1,0 +1,315 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const multer = require('multer');
+const { HttpError } = require('../utils/httpError');
+const { albumSchema, photoMoveSchema } = require('../utils/schemas');
+const albumRepository = require('../repositories/albumRepository');
+const photoRepository = require('../repositories/photoRepository');
+const { addAuditLog } = require('../repositories/auditRepository');
+const { canAccessAlbum, hasPermission } = require('../services/accessService');
+const { hashPassword, verifyPassword } = require('../utils/password');
+const env = require('../config/env');
+const { validateJpegUpload } = require('../utils/fileValidation');
+const { normalizeJpeg } = require('../services/imageService');
+const storageService = require('../services/storageService');
+const { db } = require('../config/db');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: env.MAX_FILE_SIZE_BYTES } });
+
+function filterVisibleAlbums(user, albums) {
+  return albums.filter((album) => {
+    if (album.visibility === 'public') return true;
+    if (!user) return false;
+    if (user.role === 'main_admin') return true;
+    if (user.permissions?.includes('VIEW_PROTECTED_ALBUMS')) return true;
+    return albumRepository.userHasAlbumAccess(album.id, user.id);
+  });
+}
+
+async function canAccessAlbumWithPassword(req, album) {
+  if (canAccessAlbum(req.user || null, album)) return true;
+  if (album.visibility !== 'protected' || !album.passwordHash) return false;
+  const unlocked = req.session?.unlockedAlbums || [];
+  if (unlocked.includes(album.id)) return true;
+  const submittedPassword = req.get('x-album-password');
+  if (!submittedPassword) return false;
+  const isValid = await verifyPassword(submittedPassword, album.passwordHash);
+  if (isValid) {
+    req.session.unlockedAlbums = [...new Set([...(req.session.unlockedAlbums || []), album.id])];
+  }
+  return isValid;
+}
+
+function listAlbums(req, res) {
+  const albums = filterVisibleAlbums(req.user || null, albumRepository.listAlbums());
+  res.json({ success: true, data: albums });
+}
+
+async function createAlbum(req, res, next) {
+  try {
+    const payload = albumSchema.parse(req.body);
+    const passwordHash = payload.visibility === 'protected' && payload.password ? await hashPassword(payload.password) : null;
+    const album = albumRepository.createAlbum({
+      name: payload.name,
+      description: payload.description,
+      visibility: payload.visibility,
+      passwordHash,
+    });
+
+    if (payload.accessUserIds?.length) {
+      albumRepository.setAlbumAccess(album.id, payload.accessUserIds);
+    }
+
+    addAuditLog({ actorId: req.user.id, action: 'ALBUM_CREATE', objectType: 'album', objectId: String(album.id), metadata: { name: album.name }, ipAddress: req.ip });
+    res.status(201).json({ success: true, data: album });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getAlbum(req, res, next) {
+  try {
+    const album = albumRepository.getAlbumById(Number(req.params.id));
+    if (!album) throw new HttpError(404, 'NOT_FOUND', 'Album introuvable');
+
+    const userHasAccess = await canAccessAlbumWithPassword(req, album);
+    if (!userHasAccess) {
+      throw new HttpError(
+        403,
+        'FORBIDDEN',
+        album.visibility === 'protected' && album.passwordHash ? 'Mot de passe album requis' : 'Accès album refusé'
+      );
+    }
+
+    const accessUserIds = albumRepository.getAlbumAccessUserIds(album.id);
+    res.json({
+      success: true,
+      data: {
+        ...album,
+        hasPassword: Boolean(album.passwordHash),
+        accessUserIds,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateAlbum(req, res, next) {
+  try {
+    const albumId = Number(req.params.id);
+    const current = albumRepository.getAlbumById(albumId);
+    if (!current) throw new HttpError(404, 'NOT_FOUND', 'Album introuvable');
+
+    const payload = albumSchema.parse(req.body);
+    let passwordHash = current.passwordHash;
+    if (payload.visibility === 'public') {
+      passwordHash = null;
+    } else if (payload.password) {
+      passwordHash = await hashPassword(payload.password);
+    }
+
+    const updated = albumRepository.updateAlbum(albumId, {
+      name: payload.name,
+      description: payload.description,
+      visibility: payload.visibility,
+      passwordHash,
+      coverPhotoId: payload.coverPhotoId,
+    });
+
+    if (payload.accessUserIds) {
+      albumRepository.setAlbumAccess(albumId, payload.accessUserIds);
+    }
+
+    addAuditLog({ actorId: req.user.id, action: 'ALBUM_UPDATE', objectType: 'album', objectId: String(albumId), ipAddress: req.ip });
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function deleteAlbum(req, res, next) {
+  try {
+    const albumId = Number(req.params.id);
+    const album = albumRepository.getAlbumById(albumId);
+    if (!album) throw new HttpError(404, 'NOT_FOUND', 'Album introuvable');
+
+    const photos = albumRepository.listAlbumPhotos(albumId);
+    for (const photo of photos) {
+      const full = photoRepository.getPhotoById(photo.id);
+      await storageService.deletePhotoFiles(full);
+    }
+
+    const albumDir = path.join(env.PICTURES_DIR, `album-${albumId}`);
+    if (fs.existsSync(albumDir)) {
+      fs.rmSync(albumDir, { recursive: true, force: true });
+    }
+
+    albumRepository.deleteAlbum(albumId);
+    addAuditLog({ actorId: req.user.id, action: 'ALBUM_DELETE', objectType: 'album', objectId: String(albumId), ipAddress: req.ip });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function listAlbumPhotos(req, res, next) {
+  try {
+    const album = albumRepository.getAlbumById(Number(req.params.id));
+    if (!album) throw new HttpError(404, 'NOT_FOUND', 'Album introuvable');
+    if (!(await canAccessAlbumWithPassword(req, album))) {
+      throw new HttpError(403, 'FORBIDDEN', 'Accès album refusé');
+    }
+
+    const photos = albumRepository.listAlbumPhotos(album.id);
+    res.json({ success: true, data: photos });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function uploadAlbumPhotos(req, res, next) {
+  try {
+    const albumId = Number(req.params.id);
+    const album = albumRepository.getAlbumById(albumId);
+    if (!album) throw new HttpError(404, 'NOT_FOUND', 'Album introuvable');
+    if (!(await canAccessAlbumWithPassword(req, album))) {
+      throw new HttpError(403, 'FORBIDDEN', 'Accès album refusé');
+    }
+
+    const files = req.files || [];
+    if (!files.length) throw new HttpError(400, 'MISSING_FILE', 'Aucun fichier envoyé');
+
+    const uploaded = [];
+    for (const file of files) {
+      await validateJpegUpload(file);
+      const transformed = await normalizeJpeg(file.buffer);
+      const stored = await storageService.storePhotoBuffers(albumId, transformed.normalized, transformed.thumbnail);
+
+      const photo = photoRepository.createPhoto({
+        albumId,
+        filename: stored.filename,
+        originalName: file.originalname,
+        originalPath: stored.originalRelative,
+        thumbnailPath: stored.thumbnailRelative,
+        size: file.size,
+        mimeType: 'image/jpeg',
+        width: transformed.width,
+        height: transformed.height,
+        uploadedBy: req.user.id,
+      });
+      uploaded.push(photo);
+    }
+
+    addAuditLog({ actorId: req.user.id, action: 'PHOTO_UPLOAD', objectType: 'album', objectId: String(albumId), metadata: { count: uploaded.length }, ipAddress: req.ip });
+    res.status(201).json({ success: true, data: uploaded });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getPhoto(req, res, next) {
+  try {
+    const photo = photoRepository.getPhotoById(Number(req.params.id));
+    if (!photo) throw new HttpError(404, 'NOT_FOUND', 'Photo introuvable');
+    const album = albumRepository.getAlbumById(photo.albumId);
+    if (!(await canAccessAlbumWithPassword(req, album))) {
+      throw new HttpError(403, 'FORBIDDEN', 'Accès photo refusé');
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: photo.id,
+        albumId: photo.albumId,
+        filename: photo.filename,
+        originalName: photo.originalName,
+        size: photo.size,
+        mimeType: photo.mimeType,
+        width: photo.width,
+        height: photo.height,
+        originalUrl: `/api/photos/${photo.id}/file`,
+        thumbnailUrl: `/api/photos/${photo.id}/thumbnail`,
+        createdAt: photo.createdAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function streamPhoto(req, res, next) {
+  try {
+    const photo = photoRepository.getPhotoById(Number(req.params.id));
+    if (!photo) throw new HttpError(404, 'NOT_FOUND', 'Photo introuvable');
+    const album = albumRepository.getAlbumById(photo.albumId);
+    if (!(await canAccessAlbumWithPassword(req, album))) {
+      throw new HttpError(403, 'FORBIDDEN', 'Accès photo refusé');
+    }
+
+    const relative = req.params.variant === 'thumbnail' ? photo.thumbnailPath : photo.originalPath;
+    const safePath = storageService.resolveSafePath(relative);
+    res.type('image/jpeg');
+    res.sendFile(safePath);
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function deletePhoto(req, res, next) {
+  try {
+    const photo = photoRepository.getPhotoById(Number(req.params.id));
+    if (!photo) throw new HttpError(404, 'NOT_FOUND', 'Photo introuvable');
+
+    if (!hasPermission(req.user, 'DELETE_PHOTOS')) {
+      throw new HttpError(403, 'FORBIDDEN', 'Permission insuffisante');
+    }
+
+    await storageService.deletePhotoFiles(photo);
+    photoRepository.deletePhoto(photo.id);
+    addAuditLog({ actorId: req.user.id, action: 'PHOTO_DELETE', objectType: 'photo', objectId: String(photo.id), ipAddress: req.ip });
+
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function movePhoto(req, res, next) {
+  try {
+    const payload = photoMoveSchema.parse(req.body);
+    const photo = photoRepository.getPhotoById(payload.photoId);
+    if (!photo) throw new HttpError(404, 'NOT_FOUND', 'Photo introuvable');
+
+    const targetAlbum = albumRepository.getAlbumById(payload.targetAlbumId);
+    if (!targetAlbum) throw new HttpError(404, 'NOT_FOUND', 'Album cible introuvable');
+
+    const movedPaths = await storageService.movePhotoFiles(photo, payload.targetAlbumId);
+    db.prepare('UPDATE photos SET album_id = ?, original_path = ?, thumbnail_path = ? WHERE id = ?').run(
+      payload.targetAlbumId,
+      movedPaths.originalPath,
+      movedPaths.thumbnailPath,
+      photo.id
+    );
+
+    addAuditLog({ actorId: req.user.id, action: 'PHOTO_MOVE', objectType: 'photo', objectId: String(photo.id), metadata: { from: photo.albumId, to: payload.targetAlbumId }, ipAddress: req.ip });
+    res.json({ success: true, data: photoRepository.getPhotoById(photo.id) });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = {
+  upload,
+  listAlbums,
+  createAlbum,
+  getAlbum,
+  updateAlbum,
+  deleteAlbum,
+  listAlbumPhotos,
+  uploadAlbumPhotos,
+  getPhoto,
+  streamPhoto,
+  deletePhoto,
+  movePhoto,
+};
