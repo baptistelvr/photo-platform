@@ -3,6 +3,7 @@ const path = require('node:path');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const session = require('express-session');
 const SQLiteStoreFactory = require('connect-sqlite3');
 const env = require('./config/env');
@@ -37,6 +38,14 @@ function createApp() {
 
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+  app.use(
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 600,
+      standardHeaders: true,
+      legacyHeaders: false,
+    })
+  );
 
   app.use(
     session({
@@ -67,6 +76,22 @@ function createApp() {
     user.permissions = userRepository.getPermissions(user.id);
     req.user = user;
     next();
+  });
+
+  app.use((req, res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+    const origin = req.get('origin') || '';
+    const referer = req.get('referer') || '';
+    if (env.NODE_ENV === 'test' && !origin && !referer) return next();
+    const trusted = origin === env.FRONTEND_URL || referer.startsWith(env.FRONTEND_URL);
+    if (!trusted) {
+      return res.status(403).json({
+        success: false,
+        error: 'FORBIDDEN',
+        message: 'Origine non autorisée',
+      });
+    }
+    return next();
   });
 
   app.get('/api/health', (_req, res) => {

@@ -31,8 +31,10 @@ export const api = {
   logout: () => request('/api/auth/logout', { method: 'POST' }),
   me: () => request('/api/auth/me'),
   listAlbums: () => request('/api/albums'),
-  getAlbum: (id) => request(`/api/albums/${id}`),
-  listAlbumPhotos: (id) => request(`/api/albums/${id}/photos`),
+  getAlbum: (id, albumPassword) =>
+    request(`/api/albums/${id}`, { headers: albumPassword ? { 'x-album-password': albumPassword } : {} }),
+  listAlbumPhotos: (id, albumPassword) =>
+    request(`/api/albums/${id}/photos`, { headers: albumPassword ? { 'x-album-password': albumPassword } : {} }),
   createAlbum: (body) => request('/api/albums', { method: 'POST', body: JSON.stringify(body) }),
   updateAlbum: (id, body) => request(`/api/albums/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteAlbum: (id) => request(`/api/albums/${id}`, { method: 'DELETE' }),

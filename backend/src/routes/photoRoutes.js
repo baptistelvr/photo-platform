@@ -1,9 +1,18 @@
 const { Router } = require('express');
+const rateLimit = require('express-rate-limit');
 const albumController = require('../controllers/albumController');
 const { requireAuth, requirePermission } = require('../middlewares/auth');
 const { PERMISSIONS } = require('../constants/permissions');
 
 const router = Router();
+const photoLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+router.use(photoLimiter);
 
 router.get('/:id', albumController.getPhoto);
 router.get('/:id/file', (req, res, next) => {

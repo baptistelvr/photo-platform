@@ -29,9 +29,15 @@ function filterVisibleAlbums(user, albums) {
 async function canAccessAlbumWithPassword(req, album) {
   if (canAccessAlbum(req.user || null, album)) return true;
   if (album.visibility !== 'protected' || !album.passwordHash) return false;
-  const submittedPassword = req.query.password;
+  const unlocked = req.session?.unlockedAlbums || [];
+  if (unlocked.includes(album.id)) return true;
+  const submittedPassword = req.get('x-album-password');
   if (!submittedPassword) return false;
-  return verifyPassword(submittedPassword, album.passwordHash);
+  const isValid = await verifyPassword(submittedPassword, album.passwordHash);
+  if (isValid) {
+    req.session.unlockedAlbums = [...new Set([...(req.session.unlockedAlbums || []), album.id])];
+  }
+  return isValid;
 }
 
 function listAlbums(req, res) {

@@ -1,12 +1,19 @@
 const { Router } = require('express');
+const rateLimit = require('express-rate-limit');
 const authController = require('../controllers/authController');
 const { requireAuth } = require('../middlewares/auth');
 
 const router = Router();
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 router.post('/login', authController.loginLimiter, authController.login);
-router.post('/logout', requireAuth, authController.logout);
-router.get('/me', requireAuth, authController.me);
-router.post('/change-password', requireAuth, authController.changePassword);
+router.post('/logout', authLimiter, requireAuth, authController.logout);
+router.get('/me', authLimiter, requireAuth, authController.me);
+router.post('/change-password', authLimiter, requireAuth, authController.changePassword);
 
 module.exports = router;

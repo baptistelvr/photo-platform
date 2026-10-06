@@ -9,14 +9,20 @@ export function CollectionDetailPage() {
   const [error, setError] = useState('');
   const [index, setIndex] = useState(-1);
   const [zoomed, setZoomed] = useState(false);
+  const [password, setPassword] = useState('');
 
-  useEffect(() => {
-    Promise.all([api.getAlbum(id), api.listAlbumPhotos(id)])
+  function loadAlbum(albumPassword = '') {
+    return Promise.all([api.getAlbum(id, albumPassword), api.listAlbumPhotos(id, albumPassword)])
       .then(([albumRes, photosRes]) => {
         setAlbum(albumRes.data);
         setPhotos(photosRes.data || []);
+        setError('');
       })
       .catch((err) => setError(err.payload?.message || 'Album inaccessible'));
+  }
+
+  useEffect(() => {
+    loadAlbum();
   }, [id]);
 
   useEffect(() => {
@@ -30,7 +36,29 @@ export function CollectionDetailPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [index, photos.length]);
 
-  if (error) return <p>{error}</p>;
+  if (error) {
+    return (
+      <section>
+        <p>{error}</p>
+        <form
+          className="inline-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            loadAlbum(password);
+          }}
+        >
+          <label htmlFor="album-password">Mot de passe album</label>
+          <input
+            id="album-password"
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+          <button type="submit">Déverrouiller</button>
+        </form>
+      </section>
+    );
+  }
   if (!album) return <p>Chargement…</p>;
   const current = index >= 0 ? photos[index] : null;
 
