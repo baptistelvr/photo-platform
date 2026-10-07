@@ -10,6 +10,7 @@ const albumRepository = unwrap(require('../repositories/albumRepository'));
 const photoRepository = unwrap(require('../repositories/photoRepository'));
 const { addAuditLog } = unwrap(require('../repositories/auditRepository'));
 const storageService = unwrap(require('../services/storageService'));
+const { hasPermission } = unwrap(require('../services/accessService'));
 
 const router = Router();
 const photoLimiter = rateLimit({
@@ -31,8 +32,15 @@ router.get('/:id/thumbnail', (req, res, next) => {
   return albumController.streamPhoto(req, res, next);
 });
 router.delete('/:id', requireAuth, requirePermission(PERMISSIONS.DELETE_PHOTOS), albumController.deletePhoto);
-router.post('/move', requireAuth, requirePermission(PERMISSIONS.MOVE_PHOTOS), async (req, res, next) => {
+router.post('/move', async (req, res, next) => {
   try {
+    if (!req.session?.userId || !req.user) {
+      return res.status(401).json({ success: false, error: 'UNAUTHORIZED', message: 'Authentification requise' });
+    }
+    if (!hasPermission(req.user, PERMISSIONS.MOVE_PHOTOS)) {
+      return res.status(403).json({ success: false, error: 'FORBIDDEN', message: 'Permission insuffisante' });
+    }
+
     const payload = photoMoveSchema.parse(req.body);
     const photo = await photoRepository.getPhotoById(payload.photoId);
     if (!photo) throw new HttpError(404, 'NOT_FOUND', 'Photo introuvable');
