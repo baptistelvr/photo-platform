@@ -13,8 +13,22 @@ const unwrapDefault = (value) => {
 const env = unwrapDefault(envModule);
 const dbModule = require('../src/config/db.js');
 const db = unwrapDefault(dbModule);
-const routesModule = require('../src/routes/index.js');
-const routes = unwrapDefault(routesModule);
+const routes = express.Router();
+const routeModules = [
+  ['/auth', require('../src/routes/authRoutes.js')],
+  ['/albums', require('../src/routes/albumRoutes.js')],
+  ['/photos', require('../src/routes/photoRoutes.js')],
+  ['/users', require('../src/routes/userRoutes.js')],
+  ['/admin', require('../src/routes/adminRoutes.js')],
+  ['/permissions', require('../src/routes/permissionRoutes.js')],
+];
+for (const [prefix, routeModule] of routeModules) {
+  const route = unwrapDefault(routeModule);
+  if (typeof route !== 'function') {
+    throw new TypeError(`Backend route ${prefix} export is ${typeof route}; keys: ${Object.keys(route || {}).join(',')}`);
+  }
+  routes.use(prefix, route);
+}
 const notFoundModule = require('../src/middlewares/notFound.js');
 const notFound = notFoundModule.notFound || unwrapDefault(notFoundModule)?.notFound || unwrapDefault(notFoundModule);
 const errorHandlerModule = require('../src/middlewares/errorHandler.js');
@@ -116,6 +130,9 @@ function buildApp({ initializeOnRequest = false } = {}) {
   });
 
   app.get('/api/health', (_req, res) => res.json({ success: true, status: 'ok' }));
+  if (typeof routes !== 'function') {
+    throw new TypeError(`Backend routes export is ${typeof routes}; keys: ${Object.keys(routes || {}).join(',')}`);
+  }
   app.use('/api', routes);
   app.use(notFound);
   app.use(errorHandler);
