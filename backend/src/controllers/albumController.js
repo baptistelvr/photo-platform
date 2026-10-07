@@ -318,3 +318,6 @@ module.exports = {
   movePhoto,
 };
 
+// Keep this handler visible to Vercel's CommonJS-to-ESM function bundler.
+module.exports.movePhoto = movePhoto;
+
