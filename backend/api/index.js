@@ -1,9 +1,8 @@
-const { createApp } = require('../src/app');
+const appModule = require('../src/app');
+const createVercelApp = appModule.createVercelApp || appModule.default?.createVercelApp;
 
-let appPromise;
+if (typeof createVercelApp !== 'function') {
+  throw new TypeError('The backend must export a Vercel Express application.');
+}
 
-module.exports = async function handler(req, res) {
-  appPromise ||= createApp();
-  const app = await appPromise;
-  return app(req, res);
-};
+module.exports = createVercelApp();

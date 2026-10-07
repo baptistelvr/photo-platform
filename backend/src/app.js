@@ -31,13 +31,27 @@ async function bootstrapInitialAdmin() {
 }
 
 
-async function createApp() {
+async function initializeApp() {
   if (!env.SESSION_SECRET && env.NODE_ENV !== 'test') throw new Error('SESSION_SECRET is required.');
   db.assertProductionConfiguration();
   await migrate();
   await bootstrapInitialAdmin();
+}
+
+function buildApp({ initializeOnRequest = false } = {}) {
   const app = express();
   if (env.TRUST_PROXY) app.set('trust proxy', 1);
+
+  if (initializeOnRequest) {
+    let initializationPromise;
+    app.use((_req, _res, next) => {
+      initializationPromise ||= initializeApp().catch((error) => {
+        initializationPromise = undefined;
+        throw error;
+      });
+      initializationPromise.then(() => next(), next);
+    });
+  }
 
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
   app.use(cors({
@@ -95,4 +109,13 @@ async function createApp() {
   return app;
 }
 
-module.exports = { createApp };
+async function createApp() {
+  await initializeApp();
+  return buildApp();
+}
+
+function createVercelApp() {
+  return buildApp({ initializeOnRequest: true });
+}
+
+module.exports = { createApp, createVercelApp };
