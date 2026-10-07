@@ -1,9 +1,8 @@
-const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
 const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { put, get, del } = require('@vercel/blob');
-const env = unwrap(require('../config/env'));
+const env = require('../config/env');
 const useBlob = Boolean(process.env.VERCEL || process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
 
 function albumFolder(name) {

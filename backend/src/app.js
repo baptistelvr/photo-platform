@@ -1,18 +1,17 @@
-const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const session = require('express-session');
 const PostgreSQLStore = require('connect-pg-simple')(session);
-const env = unwrap(require('./config/env'));
-const db = unwrap(require('./config/db'));
-const routes = unwrap(require('./routes'));
-const { notFound } = unwrap(require('./middlewares/notFound'));
-const { errorHandler } = unwrap(require('./middlewares/errorHandler'));
-const { migrate } = unwrap(require('./db/migrate'));
-const userRepository = unwrap(require('./repositories/userRepository'));
-const { hashPassword } = unwrap(require('./utils/password'));
+const env = require('./config/env');
+const db = require('./config/db');
+const routes = require('./routes');
+const { notFound } = require('./middlewares/notFound');
+const { errorHandler } = require('./middlewares/errorHandler');
+const { migrate } = require('./db/migrate');
+const userRepository = require('./repositories/userRepository');
+const { hashPassword } = require('./utils/password');
 
 async function bootstrapInitialAdmin() {
   if (!process.env.VERCEL || env.NODE_ENV !== 'production') return;

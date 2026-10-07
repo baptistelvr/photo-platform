@@ -1,5 +1,4 @@
-const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
-const { hasPermission } = unwrap(require('../services/accessService'));
+const { hasPermission } = require('../services/accessService');
 
 function requireAuth(req, res, next) {
   if (!req.session?.userId || !req.user) {

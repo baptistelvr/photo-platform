@@ -1,6 +1,5 @@
-const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
-const env = unwrap(require('./config/env'));
-const { createApp } = unwrap(require('./app'));
+const env = require('./config/env');
+const { createApp } = require('./app');
 
 createApp().then((app) => {
   app.listen(env.PORT, () => {

@@ -1,5 +1,4 @@
-const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
-const { query } = unwrap(require('../config/db'));
+const { query } = require('../config/db');
 
 async function listAlbums() {
   const { rows } = await query(`SELECT a.id, a.name, a.description, a.cover_photo_id as "coverPhotoId", a.visibility,

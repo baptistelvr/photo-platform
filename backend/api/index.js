@@ -4,41 +4,14 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const session = require('express-session');
 const PostgreSQLStore = require('connect-pg-simple')(session);
-const envModule = require('../src/config/env.js');
-const unwrapDefault = (value) => {
-  let current = value;
-  for (let depth = 0; depth < 4 && current?.default; depth += 1) current = current.default;
-  return current;
-};
-const env = unwrapDefault(envModule);
-const dbModule = require('../src/config/db.js');
-const db = unwrapDefault(dbModule);
-const routes = express.Router();
-const routeModules = [
-  ['/auth', require('../src/routes/authRoutes.js')],
-  ['/albums', require('../src/routes/albumRoutes.js')],
-  ['/photos', require('../src/routes/photoRoutes.js')],
-  ['/users', require('../src/routes/userRoutes.js')],
-  ['/admin', require('../src/routes/adminRoutes.js')],
-  ['/permissions', require('../src/routes/permissionRoutes.js')],
-];
-for (const [prefix, routeModule] of routeModules) {
-  const route = unwrapDefault(routeModule);
-  if (typeof route !== 'function') {
-    throw new TypeError(`Backend route ${prefix} export is ${typeof route}; keys: ${Object.keys(route || {}).join(',')}`);
-  }
-  routes.use(prefix, route);
-}
-const notFoundModule = require('../src/middlewares/notFound.js');
-const notFound = notFoundModule.notFound || unwrapDefault(notFoundModule)?.notFound || unwrapDefault(notFoundModule);
-const errorHandlerModule = require('../src/middlewares/errorHandler.js');
-const errorHandler = errorHandlerModule.errorHandler || unwrapDefault(errorHandlerModule)?.errorHandler || unwrapDefault(errorHandlerModule);
-const migrateModule = require('../src/db/migrate.js');
-const migrate = migrateModule.migrate || unwrapDefault(migrateModule)?.migrate;
-const userRepositoryModule = require('../src/repositories/userRepository.js');
-const userRepository = unwrapDefault(userRepositoryModule);
-const passwordModule = require('../src/utils/password.js');
-const hashPassword = passwordModule.hashPassword || unwrapDefault(passwordModule)?.hashPassword;
+const env = require('../src/config/env.js');
+const db = require('../src/config/db.js');
+const routes = require('../src/routes/index.js');
+const { notFound } = require('../src/middlewares/notFound.js');
+const { errorHandler } = require('../src/middlewares/errorHandler.js');
+const { migrate } = require('../src/db/migrate.js');
+const userRepository = require('../src/repositories/userRepository.js');
+const { hashPassword } = require('../src/utils/password.js');
 
 async function bootstrapInitialAdmin() {
   if (!process.env.VERCEL || env.NODE_ENV !== 'production') return;

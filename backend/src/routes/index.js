@@ -1,11 +1,10 @@
-const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
 const { Router } = require('express');
-const authRoutes = unwrap(require('./authRoutes'));
-const albumRoutes = unwrap(require('./albumRoutes'));
-const photoRoutes = unwrap(require('./photoRoutes'));
-const userRoutes = unwrap(require('./userRoutes'));
-const adminRoutes = unwrap(require('./adminRoutes'));
-const permissionRoutes = unwrap(require('./permissionRoutes'));
+const authRoutes = require('./authRoutes');
+const albumRoutes = require('./albumRoutes');
+const photoRoutes = require('./photoRoutes');
+const userRoutes = require('./userRoutes');
+const adminRoutes = require('./adminRoutes');
+const permissionRoutes = require('./permissionRoutes');
 
 const router = Router();
 

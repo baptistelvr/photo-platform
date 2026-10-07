@@ -1,5 +1,4 @@
-const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
-const db = unwrap(require('../config/db'));
+const db = require('../config/db');
 const { query } = db;
 const baseSelect = `SELECT u.id, u.name, u.email, u.role, u.status, u.last_login as "lastLogin",
   u.created_at as "createdAt", u.updated_at as "updatedAt" FROM users u`;

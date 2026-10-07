@@ -1,5 +1,4 @@
-const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
-const { query } = unwrap(require('../config/db'));
+const { query } = require('../config/db');
 
 async function addAuditLog({ actorId, action, objectType, objectId, metadata, ipAddress }) {
   await query(`INSERT INTO audit_logs (actor_id,action,object_type,object_id,metadata,ip_address)
