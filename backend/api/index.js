@@ -2,8 +2,14 @@ const appModule = require('../src/app');
 // Vercel's Express builder may expose a CommonJS module as its default export.
 // Accept an already-created Express app as well as our local app factory so the
 // service entrypoint remains compatible with both module shapes.
-const exportedApp = appModule.default || (typeof appModule === 'function' ? appModule : null);
-const createVercelApp = appModule.createVercelApp || exportedApp?.createVercelApp;
+const candidates = [appModule];
+for (let index = 0; index < candidates.length && index < 4; index += 1) {
+  const defaultExport = candidates[index]?.default;
+  if (defaultExport && !candidates.includes(defaultExport)) candidates.push(defaultExport);
+}
+const createVercelApp = candidates.find((candidate) => typeof candidate?.createVercelApp === 'function')?.createVercelApp;
+const exportedApp = candidates.find((candidate) => typeof candidate === 'function'
+  && typeof candidate.use === 'function' && typeof candidate.handle === 'function');
 
 if (typeof createVercelApp === 'function') {
   module.exports = createVercelApp();
