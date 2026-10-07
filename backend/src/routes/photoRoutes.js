@@ -1,15 +1,16 @@
+const unwrap = (value) => value?.default ?? value;
 const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
-const albumController = require('../controllers/albumController');
-const { requireAuth, requirePermission } = require('../middlewares/auth');
-const { PERMISSIONS } = require('../constants/permissions');
-const { HttpError } = require('../utils/httpError');
-const { photoMoveSchema } = require('../utils/schemas');
-const albumRepository = require('../repositories/albumRepository');
-const photoRepository = require('../repositories/photoRepository');
-const { addAuditLog } = require('../repositories/auditRepository');
-const storageService = require('../services/storageService');
-const { hasPermission } = require('../services/accessService');
+const albumController = unwrap(require('../controllers/albumController'));
+const { requireAuth, requirePermission } = unwrap(require('../middlewares/auth'));
+const { PERMISSIONS } = unwrap(require('../constants/permissions'));
+const { HttpError } = unwrap(require('../utils/httpError'));
+const { photoMoveSchema } = unwrap(require('../utils/schemas'));
+const albumRepository = unwrap(require('../repositories/albumRepository'));
+const photoRepository = unwrap(require('../repositories/photoRepository'));
+const { addAuditLog } = unwrap(require('../repositories/auditRepository'));
+const storageService = unwrap(require('../services/storageService'));
+const { hasPermission } = unwrap(require('../services/accessService'));
 
 const router = Router();
 const photoLimiter = rateLimit({

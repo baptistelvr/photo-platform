@@ -1,5 +1,6 @@
-const { query, dialect } = require('../config/db');
-const { ALL_PERMISSIONS } = require('../constants/permissions');
+const unwrap = (value) => value?.default ?? value;
+const { query, dialect } = unwrap(require('../config/db'));
+const { ALL_PERMISSIONS } = unwrap(require('../constants/permissions'));
 
 async function migrate() {
   const id = dialect === 'postgres' ? 'SERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';

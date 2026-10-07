@@ -1,4 +1,5 @@
-const db = require('../config/db');
+const unwrap = (value) => value?.default ?? value;
+const db = unwrap(require('../config/db'));
 const { query } = db;
 const baseSelect = `SELECT u.id, u.name, u.email, u.role, u.status, u.last_login as "lastLogin",
   u.created_at as "createdAt", u.updated_at as "updatedAt" FROM users u`;

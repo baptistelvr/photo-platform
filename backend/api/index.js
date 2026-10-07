@@ -5,11 +5,7 @@ const rateLimit = require('express-rate-limit');
 const session = require('express-session');
 const PostgreSQLStore = require('connect-pg-simple')(session);
 const fromVercelModule = (value) => value?.default ?? value;
-const unwrapRouteModule = (value) => {
-  let current = value;
-  for (let depth = 0; depth < 4 && current?.default; depth += 1) current = current.default;
-  return current;
-};
+const unwrapRouteModule = (value) => value?.default ?? value;
 const env = fromVercelModule(require('../src/config/env.js'));
 const db = fromVercelModule(require('../src/config/db.js'));
 const routes = express.Router();

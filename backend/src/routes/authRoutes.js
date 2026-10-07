@@ -1,7 +1,8 @@
+const unwrap = (value) => value?.default ?? value;
 const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
-const authController = require('../controllers/authController');
-const { requireAuth } = require('../middlewares/auth');
+const authController = unwrap(require('../controllers/authController'));
+const { requireAuth } = unwrap(require('../middlewares/auth'));
 
 const router = Router();
 const authLimiter = rateLimit({

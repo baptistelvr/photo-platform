@@ -1,9 +1,10 @@
-const userRepository = require('../repositories/userRepository');
-const albumRepository = require('../repositories/albumRepository');
-const { userSchema, resetPasswordSchema } = require('../utils/schemas');
-const { hashPassword } = require('../utils/password');
-const { HttpError } = require('../utils/httpError');
-const { addAuditLog } = require('../repositories/auditRepository');
+const unwrap = (value) => value?.default ?? value;
+const userRepository = unwrap(require('../repositories/userRepository'));
+const albumRepository = unwrap(require('../repositories/albumRepository'));
+const { userSchema, resetPasswordSchema } = unwrap(require('../utils/schemas'));
+const { hashPassword } = unwrap(require('../utils/password'));
+const { HttpError } = unwrap(require('../utils/httpError'));
+const { addAuditLog } = unwrap(require('../repositories/auditRepository'));
 
 async function listUsers(_req, res) {
   const users = await userRepository.listUsers();

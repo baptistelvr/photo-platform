@@ -1,4 +1,5 @@
-const { query } = require('../config/db');
+const unwrap = (value) => value?.default ?? value;
+const { query } = unwrap(require('../config/db'));
 
 async function createPhoto(payload) {
   const { rows } = await query(`INSERT INTO photos (album_id,filename,original_name,original_path,thumbnail_path,

@@ -1,7 +1,8 @@
+const unwrap = (value) => value?.default ?? value;
 const { Router } = require('express');
-const userController = require('../controllers/userController');
-const { requireAuth, requirePermission } = require('../middlewares/auth');
-const { PERMISSIONS } = require('../constants/permissions');
+const userController = unwrap(require('../controllers/userController'));
+const { requireAuth, requirePermission } = unwrap(require('../middlewares/auth'));
+const { PERMISSIONS } = unwrap(require('../constants/permissions'));
 
 const router = Router();
 

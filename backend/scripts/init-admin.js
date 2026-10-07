@@ -1,9 +1,10 @@
+const unwrap = (value) => value?.default ?? value;
 const readline = require('node:readline/promises');
 const { stdin: input, stdout: output } = require('node:process');
-const { migrate } = require('../src/db/migrate');
-const userRepository = require('../src/repositories/userRepository');
-const { hashPassword } = require('../src/utils/password');
-const { ALL_PERMISSIONS } = require('../src/constants/permissions');
+const { migrate } = unwrap(require('../src/db/migrate'));
+const userRepository = unwrap(require('../src/repositories/userRepository'));
+const { hashPassword } = unwrap(require('../src/utils/password'));
+const { ALL_PERMISSIONS } = unwrap(require('../src/constants/permissions'));
 
 async function askMissingValues() {
   const values = {

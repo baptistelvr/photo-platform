@@ -1,7 +1,8 @@
+const unwrap = (value) => value?.default ?? value;
 const path = require('node:path');
 const { fileTypeFromBuffer } = require('file-type');
-const env = require('../config/env');
-const { HttpError } = require('./httpError');
+const env = unwrap(require('../config/env'));
+const { HttpError } = unwrap(require('./httpError'));
 
 const allowedMimeTypes = new Set(['image/jpeg']);
 const allowedExtensions = new Set(['.jpg', '.jpeg']);

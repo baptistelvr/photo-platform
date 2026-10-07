@@ -1,4 +1,5 @@
-const { migrate } = require('../src/db/migrate');
+const unwrap = (value) => value?.default ?? value;
+const { migrate } = unwrap(require('../src/db/migrate'));
 
 migrate().then(() => {
   console.log('Database schema is ready.');

@@ -1,4 +1,5 @@
-const albumRepository = require('../repositories/albumRepository');
+const unwrap = (value) => value?.default ?? value;
+const albumRepository = unwrap(require('../repositories/albumRepository'));
 
 function isMainAdmin(user) {
   return user?.role === 'main_admin';

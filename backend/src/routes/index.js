@@ -1,10 +1,11 @@
+const unwrap = (value) => value?.default ?? value;
 const { Router } = require('express');
-const authRoutes = require('./authRoutes');
-const albumRoutes = require('./albumRoutes');
-const photoRoutes = require('./photoRoutes');
-const userRoutes = require('./userRoutes');
-const adminRoutes = require('./adminRoutes');
-const permissionRoutes = require('./permissionRoutes');
+const authRoutes = unwrap(require('./authRoutes'));
+const albumRoutes = unwrap(require('./albumRoutes'));
+const photoRoutes = unwrap(require('./photoRoutes'));
+const userRoutes = unwrap(require('./userRoutes'));
+const adminRoutes = unwrap(require('./adminRoutes'));
+const permissionRoutes = unwrap(require('./permissionRoutes'));
 
 const router = Router();
 

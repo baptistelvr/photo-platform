@@ -1,16 +1,17 @@
+const unwrap = (value) => value?.default ?? value;
 const multer = require('multer');
 const { Readable } = require('node:stream');
-const { HttpError } = require('../utils/httpError');
-const { albumSchema, photoMoveSchema } = require('../utils/schemas');
-const albumRepository = require('../repositories/albumRepository');
-const photoRepository = require('../repositories/photoRepository');
-const { addAuditLog } = require('../repositories/auditRepository');
-const { canAccessAlbum, hasPermission } = require('../services/accessService');
-const { hashPassword, verifyPassword } = require('../utils/password');
-const env = require('../config/env');
-const { validateJpegUpload } = require('../utils/fileValidation');
-const { normalizeJpeg } = require('../services/imageService');
-const storageService = require('../services/storageService');
+const { HttpError } = unwrap(require('../utils/httpError'));
+const { albumSchema, photoMoveSchema } = unwrap(require('../utils/schemas'));
+const albumRepository = unwrap(require('../repositories/albumRepository'));
+const photoRepository = unwrap(require('../repositories/photoRepository'));
+const { addAuditLog } = unwrap(require('../repositories/auditRepository'));
+const { canAccessAlbum, hasPermission } = unwrap(require('../services/accessService'));
+const { hashPassword, verifyPassword } = unwrap(require('../utils/password'));
+const env = unwrap(require('../config/env'));
+const { validateJpegUpload } = unwrap(require('../utils/fileValidation'));
+const { normalizeJpeg } = unwrap(require('../services/imageService'));
+const storageService = unwrap(require('../services/storageService'));
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: env.MAX_FILE_SIZE_BYTES, files: 3 } });
 

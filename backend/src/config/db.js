@@ -1,5 +1,6 @@
+const unwrap = (value) => value?.default ?? value;
 const path = require('node:path');
-const env = require('./env');
+const env = unwrap(require('./env'));
 
 const isPostgres = /^postgres(?:ql)?:\/\//i.test(env.DATABASE_URL);
 let sqlite;

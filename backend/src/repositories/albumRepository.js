@@ -1,4 +1,5 @@
-const { query } = require('../config/db');
+const unwrap = (value) => value?.default ?? value;
+const { query } = unwrap(require('../config/db'));
 
 async function listAlbums() {
   const { rows } = await query(`SELECT a.id, a.name, a.description, a.cover_photo_id as "coverPhotoId", a.visibility,

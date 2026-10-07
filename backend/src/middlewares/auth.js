@@ -1,4 +1,5 @@
-const { hasPermission } = require('../services/accessService');
+const unwrap = (value) => value?.default ?? value;
+const { hasPermission } = unwrap(require('../services/accessService'));
 
 function requireAuth(req, res, next) {
   if (!req.session?.userId || !req.user) {

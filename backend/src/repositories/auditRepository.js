@@ -1,4 +1,5 @@
-const { query } = require('../config/db');
+const unwrap = (value) => value?.default ?? value;
+const { query } = unwrap(require('../config/db'));
 
 async function addAuditLog({ actorId, action, objectType, objectId, metadata, ipAddress }) {
   await query(`INSERT INTO audit_logs (actor_id,action,object_type,object_id,metadata,ip_address)

@@ -1,5 +1,6 @@
-const env = require('./config/env');
-const { createApp } = require('./app');
+const unwrap = (value) => value?.default ?? value;
+const env = unwrap(require('./config/env'));
+const { createApp } = unwrap(require('./app'));
 
 createApp().then((app) => {
   app.listen(env.PORT, () => {
