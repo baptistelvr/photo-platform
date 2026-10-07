@@ -5,7 +5,7 @@
   "description": "Backend API for photo platform",
   "main": "src/server.js",
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "nodemon src/server.js",
@@ -22,13 +22,10 @@
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^13.0.3",
     "connect-pg-simple": "^10.0.0",
-    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
-    "csurf": "^1.11.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.1",
     "express-session": "^1.19.0",
-    "file-type": "^22.1.1",
     "helmet": "^8.3.0",
     "multer": "^2.4.0",
     "sharp": "^0.35.5",

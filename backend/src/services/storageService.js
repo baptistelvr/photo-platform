@@ -1,14 +1,24 @@
-const unwrap = (value) => value?.default ?? value;
 const crypto = require('node:crypto');
-const fs = require('node:fs/promises');
+const fs = require('node:fs');
+const fsp = require('node:fs/promises');
 const path = require('node:path');
-const { put, get, del } = require('@vercel/blob');
-const env = unwrap(require('../config/env'));
-const useBlob = Boolean(process.env.VERCEL || process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
+const { Readable } = require('node:stream');
+const env = require('../config/env');
+
+// Loaded lazily: local development never touches Vercel Blob.
+let blobClient;
+function blob() {
+  blobClient ||= require('@vercel/blob');
+  return blobClient;
+}
+
+const blobWriteOptions = { access: 'private', contentType: 'image/jpeg', addRandomSuffix: false, allowOverwrite: true };
 
 function albumFolder(name) {
-  const folder = String(name).normalize('NFKC').trim().replace(/[\\/\0]/g, '-')
-    .replace(/\.\./g, '-').replace(/\s+/g, ' ');
+  const folder = String(name).normalize('NFKC').trim()
+    .replace(/[\\/\0]/g, '-')
+    .replace(/\.\./g, '-')
+    .replace(/\s+/g, ' ');
   if (!folder || folder === '.' || folder.length > 120) throw new Error('Invalid album folder name');
   return folder;
 }
@@ -17,89 +27,100 @@ function generateFilename() {
   return `${Date.now()}-${crypto.randomBytes(12).toString('hex')}.jpg`;
 }
 
-async function storePhotoBuffers(album, originalBuffer, thumbnailBuffer) {
+function photoPaths(album, filename) {
   const folder = albumFolder(album.name);
+  return {
+    originalPath: `Pictures/${folder}/original/${filename}`,
+    thumbnailPath: `Pictures/${folder}/thumbnails/${filename}`,
+  };
+}
+
+function localPath(pathname) {
+  const root = path.resolve(env.PICTURES_DIR);
+  const absolutePath = path.resolve(root, pathname.replace(/^Pictures[\\/]/, ''));
+  if (!absolutePath.startsWith(`${root}${path.sep}`)) throw new Error('Unsafe path detected');
+  return absolutePath;
+}
+
+async function writeLocal(pathname, buffer) {
+  const target = localPath(pathname);
+  await fsp.mkdir(path.dirname(target), { recursive: true });
+  await fsp.writeFile(target, buffer);
+}
+
+async function removeLocal(pathname) {
+  await fsp.unlink(localPath(pathname)).catch((error) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
+}
+
+async function storePhotoBuffers(album, originalBuffer, thumbnailBuffer) {
   const filename = generateFilename();
-  const originalPath = `Pictures/${folder}/original/${filename}`;
-  const thumbnailPath = `Pictures/${folder}/thumbnails/${filename}`;
-  if (!useBlob) {
-    const base = path.join(env.PICTURES_DIR, folder);
-    await fs.mkdir(path.join(base, 'original'), { recursive: true });
-    await fs.mkdir(path.join(base, 'thumbnails'), { recursive: true });
-    await fs.writeFile(path.join(base, 'original', filename), originalBuffer);
-    await fs.writeFile(path.join(base, 'thumbnails', filename), thumbnailBuffer);
-    return { filename, originalRelative: originalPath, thumbnailRelative: thumbnailPath };
+  const { originalPath, thumbnailPath } = photoPaths(album, filename);
+
+  if (!env.USE_BLOB_STORAGE) {
+    await writeLocal(originalPath, originalBuffer);
+    await writeLocal(thumbnailPath, thumbnailBuffer);
+  } else {
+    await blob().put(originalPath, originalBuffer, blobWriteOptions);
+    try {
+      await blob().put(thumbnailPath, thumbnailBuffer, blobWriteOptions);
+    } catch (error) {
+      await blob().del(originalPath).catch(() => {});
+      throw error;
+    }
   }
-  await put(originalPath, originalBuffer, { access: 'private', contentType: 'image/jpeg', addRandomSuffix: false });
-  try {
-    await put(thumbnailPath, thumbnailBuffer, { access: 'private', contentType: 'image/jpeg', addRandomSuffix: false });
-  } catch (error) {
-    await del(originalPath, { access: 'private' }).catch(() => {});
-    throw error;
-  }
+
   return { filename, originalRelative: originalPath, thumbnailRelative: thumbnailPath };
 }
 
+/** Returns a Node readable stream for the stored file, or null if it does not exist. */
 async function readPhoto(pathname) {
-  if (!useBlob) {
-    const relativePath = pathname.replace(/^Pictures[\\/]/, '');
-    const absolutePath = path.resolve(env.PICTURES_DIR, relativePath);
-    const root = path.resolve(env.PICTURES_DIR);
-    if (!absolutePath.startsWith(`${root}${path.sep}`)) throw new Error('Unsafe path detected');
-    try { return { stream: require('node:fs').createReadStream(absolutePath) }; }
-    catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  if (!env.USE_BLOB_STORAGE) {
+    const absolutePath = localPath(pathname);
+    try {
+      await fsp.access(absolutePath);
+    } catch {
+      return null;
+    }
+    return fs.createReadStream(absolutePath);
   }
-  return get(pathname, { access: 'private' });
+
+  const result = await blob().get(pathname, { access: 'private' });
+  if (!result?.stream) return null;
+  return Readable.fromWeb(result.stream);
 }
 
-async function deletePhotoFiles(photo) {
-  if (!useBlob) {
-    await Promise.all([photo.originalPath, photo.thumbnailPath].map(async (pathname) => {
-      const relativePath = pathname.replace(/^Pictures[\\/]/, '');
-      const absolutePath = path.resolve(env.PICTURES_DIR, relativePath);
-      const root = path.resolve(env.PICTURES_DIR);
-      if (!absolutePath.startsWith(`${root}${path.sep}`)) throw new Error('Unsafe path detected');
-      await fs.unlink(absolutePath).catch((error) => { if (error.code !== 'ENOENT') throw error; });
-    }));
+async function deletePhotoFiles(photos) {
+  const pathnames = [photos].flat().flatMap((photo) => [photo.originalPath, photo.thumbnailPath]).filter(Boolean);
+  if (!pathnames.length) return;
+  if (!env.USE_BLOB_STORAGE) {
+    await Promise.all(pathnames.map(removeLocal));
     return;
   }
-  await Promise.all([photo.originalPath, photo.thumbnailPath].map((pathname) => del(pathname, { access: 'private' })));
+  // del() accepts a batch of pathnames; keep batches modest.
+  for (let i = 0; i < pathnames.length; i += 100) {
+    await blob().del(pathnames.slice(i, i + 100));
+  }
 }
 
 async function movePhotoFiles(photo, targetAlbum) {
-  const filename = photo.filename;
-  const folder = albumFolder(targetAlbum.name);
-  const originalPath = `Pictures/${folder}/original/${filename}`;
-  const thumbnailPath = `Pictures/${folder}/thumbnails/${filename}`;
-  const original = await readPhoto(photo.originalPath);
-  const thumbnail = await readPhoto(photo.thumbnailPath);
-  if (!original || !thumbnail) throw new Error('Photo file missing from private storage');
-  const toBuffer = async (stream) => {
-    const chunks = [];
-    for await (const chunk of stream) chunks.push(chunk);
-    return Buffer.concat(chunks);
-  };
-  const [originalBuffer, thumbnailBuffer] = await Promise.all([toBuffer(original.stream), toBuffer(thumbnail.stream)]);
-  if (!useBlob) {
-    for (const [pathname, buffer] of [[originalPath, originalBuffer], [thumbnailPath, thumbnailBuffer]]) {
-      const relativePath = pathname.replace(/^Pictures\//, '');
-      const absolutePath = path.resolve(env.PICTURES_DIR, relativePath);
-      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-      await fs.writeFile(absolutePath, buffer);
+  const target = photoPaths(targetAlbum, photo.filename);
+  if (target.originalPath === photo.originalPath && target.thumbnailPath === photo.thumbnailPath) return target;
+
+  if (!env.USE_BLOB_STORAGE) {
+    for (const [from, to] of [[photo.originalPath, target.originalPath], [photo.thumbnailPath, target.thumbnailPath]]) {
+      const destination = localPath(to);
+      await fsp.mkdir(path.dirname(destination), { recursive: true });
+      await fsp.rename(localPath(from), destination);
     }
-    await deletePhotoFiles(photo);
-    return { originalPath, thumbnailPath };
+    return target;
   }
-  await put(originalPath, originalBuffer, { access: 'private', contentType: 'image/jpeg', addRandomSuffix: false });
-  try {
-    await put(thumbnailPath, thumbnailBuffer, { access: 'private', contentType: 'image/jpeg', addRandomSuffix: false });
-  } catch (error) {
-    await del(originalPath, { access: 'private' }).catch(() => {});
-    throw error;
-  }
-  await deletePhotoFiles(photo);
-  return { originalPath, thumbnailPath };
+
+  await blob().copy(photo.originalPath, target.originalPath, blobWriteOptions);
+  await blob().copy(photo.thumbnailPath, target.thumbnailPath, blobWriteOptions);
+  await blob().del([photo.originalPath, photo.thumbnailPath]).catch(() => {});
+  return target;
 }
 
 module.exports = { storePhotoBuffers, readPhoto, deletePhotoFiles, movePhotoFiles, albumFolder };
-

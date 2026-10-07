@@ -1,20 +1,61 @@
-const unwrap = (value) => value?.default ?? value;
 const { Router } = require('express');
-const authRoutes = unwrap(require('./authRoutes'));
-const albumRoutes = unwrap(require('./albumRoutes'));
-const photoRoutes = unwrap(require('./photoRoutes'));
-const userRoutes = unwrap(require('./userRoutes'));
-const adminRoutes = unwrap(require('./adminRoutes'));
-const permissionRoutes = unwrap(require('./permissionRoutes'));
+const rateLimit = require('express-rate-limit');
+const { requireAuth, requirePermission } = require('../middlewares/auth');
+const { PERMISSIONS } = require('../constants/permissions');
+const authController = require('../controllers/authController');
+const albumController = require('../controllers/albumController');
+const photoController = require('../controllers/photoController');
+const userController = require('../controllers/userController');
+const adminController = require('../controllers/adminController');
 
 const router = Router();
 
-router.use('/auth', authRoutes);
-router.use('/albums', albumRoutes);
-router.use('/photos', photoRoutes);
-router.use('/users', userRoutes);
-router.use('/admin', adminRoutes);
-router.use('/permissions', permissionRoutes);
+// Image requests are excluded: a single gallery page loads dozens of thumbnails.
+router.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 1000,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skip: (req) => req.method === 'GET' && /^\/photos\/\d+\/(thumbnail|file)$/.test(req.path),
+  message: { success: false, error: 'TOO_MANY_REQUESTS', message: 'Trop de requêtes, réessayez dans quelques minutes' },
+}));
+
+// Auth
+router.post('/auth/login', authController.loginLimiter, authController.login);
+router.post('/auth/logout', authController.logout);
+router.get('/auth/me', authController.me);
+router.post('/auth/change-password', requireAuth, authController.changePassword);
+
+// Albums
+router.get('/albums', albumController.listAlbums);
+router.post('/albums', requirePermission(PERMISSIONS.CREATE_ALBUMS), albumController.createAlbum);
+router.get('/albums/:id', albumController.getAlbum);
+router.put('/albums/:id', requirePermission(PERMISSIONS.EDIT_ALBUMS), albumController.updateAlbum);
+router.delete('/albums/:id', requirePermission(PERMISSIONS.DELETE_ALBUMS), albumController.deleteAlbum);
+router.get('/albums/:id/photos', albumController.listAlbumPhotos);
+router.post(
+  '/albums/:id/photos',
+  requirePermission(PERMISSIONS.UPLOAD_PHOTOS),
+  photoController.upload.array('photos'),
+  photoController.uploadAlbumPhotos,
+);
+
+// Photos
+router.post('/photos/move', requirePermission(PERMISSIONS.MOVE_PHOTOS), photoController.movePhoto);
+router.get('/photos/:id', photoController.getPhoto);
+router.get('/photos/:id/thumbnail', photoController.streamThumbnail);
+router.get('/photos/:id/file', photoController.streamOriginal);
+router.delete('/photos/:id', requirePermission(PERMISSIONS.DELETE_PHOTOS), photoController.deletePhoto);
+
+// Users & permissions
+router.get('/users', requirePermission(PERMISSIONS.MANAGE_USERS), userController.listUsers);
+router.post('/users', requirePermission(PERMISSIONS.MANAGE_USERS), userController.createUser);
+router.put('/users/:id', requirePermission(PERMISSIONS.MANAGE_USERS), userController.updateUser);
+router.delete('/users/:id', requirePermission(PERMISSIONS.MANAGE_USERS), userController.deleteUser);
+router.post('/users/:id/reset-password', requirePermission(PERMISSIONS.MANAGE_USERS), userController.resetPassword);
+router.get('/permissions', requirePermission(PERMISSIONS.MANAGE_PERMISSIONS), userController.listPermissions);
+
+// Administration
+router.get('/admin/logs', requirePermission(PERMISSIONS.MANAGE_PERMISSIONS), adminController.getLogs);
 
 module.exports = router;
-

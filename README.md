@@ -1,169 +1,69 @@
 # Photo Platform
 
-Première version exécutable d’une plateforme photo avec frontend et backend séparés, communication REST et stockage local sécurisé.
+Une plateforme pour partager des albums photo. Certains albums sont publics, d'autres protégés, soit par une liste de personnes autorisées, soit par un mot de passe à transmettre. Les images ne sont jamais servies en direct depuis le stockage : chaque requête passe par l'API, qui vérifie les droits avant d'envoyer le fichier.
 
-## Structure
+- `frontend/` : React 19 + Vite, sans framework CSS (design system maison dans `src/styles`).
+- `backend/` : API Express 5. SQLite et dossier `Pictures/` en local ; Neon Postgres et Vercel Blob privé en production.
+- `vercel.json` : un seul projet Vercel avec deux services. `/api/*` part vers le backend, tout le reste vers le frontend. Comme les deux sont servis depuis la même origine, il n'y a pas de CORS à gérer.
 
-- `/frontend` : application React + Vite
-- `/backend` : API Node.js + Express + SQLite
+## Lancer le projet en local
 
-## Prérequis
-
-- Node.js 20+
-- npm 10+
-
-## Installation
-
-### 1) Backend
+Il faut Node.js 22 ou plus récent (la production tourne en Node 24).
 
 ```bash
-cd /home/runner/work/photo-platform/photo-platform/backend
-cp .env.example .env
+# Terminal 1 : l'API sur http://localhost:3000
+cd backend
+cp .env.example .env        # pensez à changer SESSION_SECRET
 npm install
 npm run migrate
-npm run init:admin
+npm run init:admin          # crée l'administrateur principal (questions dans le terminal)
+npm run dev
 ```
 
-Variables backend (`backend/.env`):
-
-- `PORT` (défaut `3000`)
-- `DATABASE_URL` (défaut `./data.sqlite`)
-- `SESSION_SECRET` (**obligatoire**)
-- `FRONTEND_URL` (défaut `http://localhost:5173`)
-- `PICTURES_DIR` (défaut `./Pictures`)
-- `TRUST_PROXY` (`true|false`)
-
-### 2) Frontend
-
 ```bash
-cd /home/runner/work/photo-platform/photo-platform/frontend
-cp .env.example .env
+# Terminal 2 : l'interface sur http://localhost:5173
+cd frontend
 npm install
-```
-
-Variables frontend (`frontend/.env`):
-
-- `VITE_API_BASE_URL` (défaut `http://localhost:3000`)
-
-## Lancement local
-
-Backend (port 3000):
-
-```bash
-cd /home/runner/work/photo-platform/photo-platform/backend
 npm run dev
 ```
 
-Frontend (port 5173):
+Vite redirige `/api` vers le port 3000, exactement comme le fait Vercel en production. Inutile donc de renseigner `VITE_API_BASE_URL`, sauf si l'API est hébergée sur un autre domaine.
 
-```bash
-cd /home/runner/work/photo-platform/photo-platform/frontend
-npm run dev
-```
+## Déployer sur Vercel
 
-## API disponible
+Le projet Vercel doit utiliser le `vercel.json` du dépôt (préréglage « Services »). Ensuite :
 
-Routes principales implémentées :
+1. Reliez une base **Neon Postgres** au projet. L'intégration crée `POSTGRES_URL`, que l'API lit directement (`DATABASE_URL` reste accepté).
+2. Reliez un magasin **Vercel Blob privé**. Vercel fournit alors `BLOB_READ_WRITE_TOKEN`.
+3. Ajoutez `SESSION_SECRET`, une longue valeur aléatoire (par exemple `openssl rand -base64 48`).
+4. Pour le tout premier compte, ajoutez temporairement `ADMIN_NAME`, `ADMIN_EMAIL` et `ADMIN_PASSWORD` (12 caractères minimum), redéployez, puis ouvrez `/api/health`. Si la base ne contient encore aucun utilisateur, l'administrateur principal est créé à ce moment-là. Supprimez ensuite ces trois variables.
 
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `GET /api/auth/me`
-- `POST /api/auth/change-password`
-- `GET /api/albums`
-- `POST /api/albums`
-- `GET /api/albums/:id`
-- `PUT /api/albums/:id`
-- `DELETE /api/albums/:id`
-- `GET /api/albums/:id/photos`
-- `POST /api/albums/:id/photos`
-- `GET /api/photos/:id`
-- `GET /api/photos/:id/file`
-- `GET /api/photos/:id/thumbnail`
-- `DELETE /api/photos/:id`
-- `POST /api/photos/move`
-- `GET/POST/PUT/DELETE /api/users...`
-- `GET /api/permissions`
-- `GET /api/admin/logs`
+Attention, ces variables doivent exister pour chaque environnement où l'API doit fonctionner. Si elles ne sont définies qu'en Production, les déploiements Preview afficheront une bannière « Le serveur ne répond pas correctement ». C'est normal : `/api/health` indique précisément ce qui manque.
 
-Toutes les routes sensibles vérifient la session, le statut utilisateur et les permissions backend.
-
-## Stockage des photos
-
-Par défaut : `backend/Pictures/album-<id>/original` et `backend/Pictures/album-<id>/thumbnails`.
-
-- nom de fichier généré côté serveur
-- taille max : 1 Mo
-- JPEG uniquement (extension + MIME + contenu binaire)
-- miniatures générées via `sharp`
-- accès fichiers toujours via API (pas de service statique direct)
-
-## Permissions minimales gérées
-
-- `VIEW_PUBLIC_ALBUMS`
-- `VIEW_PROTECTED_ALBUMS`
-- `UPLOAD_PHOTOS`
-- `CREATE_ALBUMS`
-- `EDIT_ALBUMS`
-- `DELETE_ALBUMS`
-- `MOVE_PHOTOS`
-- `DELETE_PHOTOS`
-- `MANAGE_USERS`
-- `MANAGE_PERMISSIONS`
-
-Le rôle `main_admin` contourne explicitement les restrictions.
+Les migrations sont idempotentes et s'exécutent au premier appel de chaque instance. Un verrou Postgres évite que deux démarrages à froid simultanés se marchent dessus.
 
 ## Tests
 
-Backend :
-
 ```bash
-cd /home/runner/work/photo-platform/photo-platform/backend
-npm test
+cd backend && npm test               # API : auth, droits, uploads, albums protégés, CSRF…
+cd frontend && npm run lint && npm run build
 ```
 
-Couvre au minimum :
+## Le bug qui empêchait le frontend de joindre l'API
 
-- échec d’authentification (mauvais mot de passe)
-- contrôle des permissions
-- refus des uploads non JPEG
-- refus des uploads > 1 Mo
-- accès refusé à un album protégé
+Sur Vercel, chaque requête `/api/*` plantait (`FUNCTION_INVOCATION_FAILED`, puis `argument handler must be a function` dans les logs). La cause n'était ni le routage ni les exports CommonJS. Le backend importait `file-type`, un paquet **ESM uniquement**, via `require()`. Ce `require` échouait dans le runtime Vercel, le launcher retentait le chargement, et `albumController` restait en cache à moitié initialisé, avec des handlers `undefined`.
 
-Frontend :
+`file-type` a été remplacé par une vérification de la signature JPEG suivie d'un décodage complet par `sharp`. Règle à retenir pour la suite : **n'ajoutez pas au backend de dépendance qui ne fournit qu'un point d'entrée ESM** (vérifiez le champ `exports` de son `package.json`), ou convertissez d'abord le backend en ESM.
 
-```bash
-cd /home/runner/work/photo-platform/photo-platform/frontend
-npm run lint
-npm run build
-```
+## Règles côté stockage
 
-## Déploiement séparé frontend/backend
+- JPEG uniquement, 1 Mo maximum par fichier. Le contrôle porte sur l'extension, le type MIME, la signature binaire, puis un décodage complet.
+- Les images sont réencodées (orientation EXIF appliquée) et une miniature de 640 px est générée.
+- Chemins de stockage : `Pictures/<nom de l'album>/original/<fichier>.jpg` et `.../thumbnails/...`. Renommer un album déplace donc ses fichiers.
+- Le frontend envoie les photos une par une, ce qui reste bien en dessous de la limite de 4,5 Mo par requête des fonctions Vercel.
 
-- Backend déployé indépendamment avec variables d’environnement de production (`SESSION_SECRET` robuste, cookie `Secure`, CORS strict).
-- Frontend déployé séparément avec `VITE_API_BASE_URL` pointant vers le backend.
+## Permissions
 
-## Limites actuelles connues
+L'administrateur principal (`main_admin`) a tous les droits. Pour les autres comptes, ce sont les permissions qui décident : `VIEW_PUBLIC_ALBUMS`, `VIEW_PROTECTED_ALBUMS`, `UPLOAD_PHOTOS`, `CREATE_ALBUMS`, `EDIT_ALBUMS`, `DELETE_ALBUMS`, `MOVE_PHOTOS`, `DELETE_PHOTOS`, `MANAGE_USERS`, `MANAGE_PERMISSIONS`. Le rôle « admin » est surtout indicatif.
 
-- La gestion utilisateurs/permissions côté UI reste une V1 (fonctionnelle mais sans édition avancée complète des permissions album par album).
-- La visionneuse est implémentée avec navigation/clavier/zoom/plein écran de base, sans fonctions avancées de retouche.
-
-Aucun secret réel n’est stocké dans le dépôt.
-
-## Déploiement Vercel (services persistants)
-
-Le fichier `vercel.json` configure un seul projet Vercel avec deux services liés : le frontend Vite et l’API Express. Le navigateur utilise la même origine (`/api`), y compris pour les aperçus.
-
-En production, les données et les sessions utilisent Neon Postgres (`DATABASE_URL`). Les migrations idempotentes sont exécutées au démarrage de l’API. Les fichiers JPEG et leurs miniatures sont enregistrés dans un magasin Vercel Blob **privé**, sous des chemins de la forme `Pictures/<nom de l’album>/original/<nom>.jpg` et `Pictures/<nom de l’album>/thumbnails/<nom>.jpg`. Le backend authentifie les requêtes et vérifie les droits de l’utilisateur avant de transmettre une image. Les noms de fichiers sont générés par le serveur et les images sont normalisées en JPEG.
-
-Le dossier local `backend/Pictures` et SQLite restent disponibles pour le développement local. Ils ne sont pas utilisés par les fonctions Vercel.
-
-### Préparer le projet Vercel
-
-1. Importer le dépôt GitHub comme projet multi-service avec le `vercel.json` de ce dépôt.
-2. Relier une base Neon au projet afin que `DATABASE_URL` soit fourni aux environnements de déploiement.
-3. Créer un magasin Vercel Blob **privé** et le relier au projet. Vercel fournit alors l’accès au magasin aux fonctions.
-4. Définir `SESSION_SECRET` dans les environnements Production, Preview et Development avec une valeur aléatoire longue. Garder les secrets dans Vercel, jamais dans Git.
-5. Pour créer le premier administrateur en production sans télécharger les secrets Neon localement, ajouter ensemble `ADMIN_NAME`, `ADMIN_EMAIL` et `ADMIN_PASSWORD` comme variables **Secret** de l’environnement Production. Utiliser un mot de passe d’au moins 12 caractères, puis redéployer.
-6. Après le redéploiement, appeler une fois `GET /api/health`. Au démarrage de l’API, si la base ne contient encore aucun utilisateur, elle crée atomiquement le compte `main_admin` à partir de ces variables. Retirer ensuite immédiatement les trois variables temporaires de Vercel et redéployer ; le compte reste enregistré dans Neon. Se connecter puis téléverser une petite image JPEG de test.
-
-`FRONTEND_URL` n’est nécessaire que si le frontend et l’API sont servis depuis des origines différentes. Cette configuration Vercel les sert sur la même origine et utilise les cookies de session `HttpOnly`, `SameSite=Lax` et `Secure` en production.
+Un gestionnaire d'utilisateurs ne peut ni créer un administrateur principal ni modifier son compte. Changer les permissions de quelqu'un demande `MANAGE_PERMISSIONS`.

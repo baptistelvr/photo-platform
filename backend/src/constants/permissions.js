@@ -11,6 +11,19 @@ const PERMISSIONS = {
   MANAGE_PERMISSIONS: 'MANAGE_PERMISSIONS',
 };
 
+const PERMISSION_DESCRIPTIONS = {
+  VIEW_PUBLIC_ALBUMS: 'Voir les albums publics',
+  VIEW_PROTECTED_ALBUMS: 'Voir tous les albums protégés',
+  UPLOAD_PHOTOS: 'Importer des photos',
+  CREATE_ALBUMS: 'Créer des albums',
+  EDIT_ALBUMS: 'Modifier les albums',
+  DELETE_ALBUMS: 'Supprimer les albums',
+  MOVE_PHOTOS: 'Déplacer des photos',
+  DELETE_PHOTOS: 'Supprimer des photos',
+  MANAGE_USERS: 'Gérer les utilisateurs',
+  MANAGE_PERMISSIONS: 'Gérer les permissions et consulter le journal',
+};
+
 const ALL_PERMISSIONS = Object.values(PERMISSIONS);
 
-module.exports = { PERMISSIONS, ALL_PERMISSIONS };
+module.exports = { PERMISSIONS, PERMISSION_DESCRIPTIONS, ALL_PERMISSIONS };
