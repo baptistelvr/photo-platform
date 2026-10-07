@@ -5,21 +5,26 @@ const rateLimit = require('express-rate-limit');
 const session = require('express-session');
 const PostgreSQLStore = require('connect-pg-simple')(session);
 const envModule = require('../src/config/env.js');
-const env = envModule.default || envModule;
+const unwrapDefault = (value) => {
+  let current = value;
+  for (let depth = 0; depth < 4 && current?.default; depth += 1) current = current.default;
+  return current;
+};
+const env = unwrapDefault(envModule);
 const dbModule = require('../src/config/db.js');
-const db = dbModule.default || dbModule;
+const db = unwrapDefault(dbModule);
 const routesModule = require('../src/routes/index.js');
-const routes = routesModule.default || routesModule;
+const routes = unwrapDefault(routesModule);
 const notFoundModule = require('../src/middlewares/notFound.js');
-const notFound = notFoundModule.notFound || notFoundModule.default?.notFound || notFoundModule.default;
+const notFound = notFoundModule.notFound || unwrapDefault(notFoundModule)?.notFound || unwrapDefault(notFoundModule);
 const errorHandlerModule = require('../src/middlewares/errorHandler.js');
-const errorHandler = errorHandlerModule.errorHandler || errorHandlerModule.default?.errorHandler || errorHandlerModule.default;
+const errorHandler = errorHandlerModule.errorHandler || unwrapDefault(errorHandlerModule)?.errorHandler || unwrapDefault(errorHandlerModule);
 const migrateModule = require('../src/db/migrate.js');
-const migrate = migrateModule.migrate || migrateModule.default?.migrate;
+const migrate = migrateModule.migrate || unwrapDefault(migrateModule)?.migrate;
 const userRepositoryModule = require('../src/repositories/userRepository.js');
-const userRepository = userRepositoryModule.default || userRepositoryModule;
+const userRepository = unwrapDefault(userRepositoryModule);
 const passwordModule = require('../src/utils/password.js');
-const hashPassword = passwordModule.hashPassword || passwordModule.default?.hashPassword;
+const hashPassword = passwordModule.hashPassword || unwrapDefault(passwordModule)?.hashPassword;
 
 async function bootstrapInitialAdmin() {
   if (!process.env.VERCEL || env.NODE_ENV !== 'production') return;
