@@ -4,6 +4,9 @@
   "private": true,
   "description": "Backend API for photo platform",
   "main": "src/server.js",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
@@ -14,9 +17,11 @@
   "license": "MIT",
   "type": "commonjs",
   "dependencies": {
+    "@neondatabase/serverless": "^1.2.0",
+    "@vercel/blob": "^2.8.1",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^13.0.3",
-    "connect-sqlite3": "^0.9.18",
+    "connect-pg-simple": "^10.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "csurf": "^1.11.0",

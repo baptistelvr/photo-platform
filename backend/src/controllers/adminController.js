@@ -1,7 +1,7 @@
 const { listAuditLogs } = require('../repositories/auditRepository');
 
-function getLogs(_req, res) {
-  res.json({ success: true, data: listAuditLogs() });
+async function getLogs(_req, res) {
+  res.json({ success: true, data: await listAuditLogs() });
 }
 
 module.exports = { getLogs };

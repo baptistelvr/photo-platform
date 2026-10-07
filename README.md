@@ -148,3 +148,22 @@ npm run build
 - La visionneuse est implémentée avec navigation/clavier/zoom/plein écran de base, sans fonctions avancées de retouche.
 
 Aucun secret réel n’est stocké dans le dépôt.
+
+## Déploiement Vercel (services persistants)
+
+Le fichier `vercel.json` configure un seul projet Vercel avec deux services liés : le frontend Vite et l’API Express. Le navigateur utilise la même origine (`/api`), y compris pour les aperçus.
+
+En production, les données et les sessions utilisent Neon Postgres (`DATABASE_URL`). Les migrations idempotentes sont exécutées au démarrage de l’API. Les fichiers JPEG et leurs miniatures sont enregistrés dans un magasin Vercel Blob **privé**, sous des chemins de la forme `Pictures/<nom de l’album>/original/<nom>.jpg` et `Pictures/<nom de l’album>/thumbnails/<nom>.jpg`. Le backend authentifie les requêtes et vérifie les droits de l’utilisateur avant de transmettre une image. Les noms de fichiers sont générés par le serveur et les images sont normalisées en JPEG.
+
+Le dossier local `backend/Pictures` et SQLite restent disponibles pour le développement local. Ils ne sont pas utilisés par les fonctions Vercel.
+
+### Préparer le projet Vercel
+
+1. Importer le dépôt GitHub comme projet multi-service avec le `vercel.json` de ce dépôt.
+2. Relier une base Neon au projet afin que `DATABASE_URL` soit fourni aux environnements de déploiement.
+3. Créer un magasin Vercel Blob **privé** et le relier au projet. Vercel fournit alors l’accès au magasin aux fonctions.
+4. Définir `SESSION_SECRET` dans les environnements Production, Preview et Development avec une valeur aléatoire longue. Garder les secrets dans Vercel, jamais dans Git.
+5. Créer le premier administrateur depuis un environnement local sécurisé relié à la base Neon avec `npm run init:admin` dans `backend`. Les variables `ADMIN_NAME`, `ADMIN_EMAIL` et `ADMIN_PASSWORD` peuvent être fournies à la commande; elles ne doivent pas être commitées.
+6. Déployer. Les tables applicatives sont créées automatiquement par l’API. Vérifier `GET /api/health`, puis se connecter et téléverser une image JPEG de test.
+
+`FRONTEND_URL` n’est nécessaire que si le frontend et l’API sont servis depuis des origines différentes. Cette configuration Vercel les sert sur la même origine et utilise les cookies de session `HttpOnly`, `SameSite=Lax` et `Secure` en production.

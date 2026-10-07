@@ -23,18 +23,18 @@ async function askMissingValues() {
 }
 
 (async () => {
-  migrate();
+  await migrate();
   const { name, email, password } = await askMissingValues();
 
   if (!name || !email || !password || password.length < 8) {
     throw new Error('Valeurs admin invalides (mot de passe min 8 caractères).');
   }
 
-  if (userRepository.findByEmail(email)) {
+  if (await userRepository.findByEmail(email)) {
     throw new Error('Un utilisateur existe déjà avec cet email.');
   }
 
-  const admin = userRepository.createUser({
+  const admin = await userRepository.createUser({
     name,
     email,
     passwordHash: await hashPassword(password),
@@ -42,6 +42,6 @@ async function askMissingValues() {
     status: 'active',
   });
 
-  userRepository.setPermissions(admin.id, ALL_PERMISSIONS);
+  await userRepository.setPermissions(admin.id, ALL_PERMISSIONS);
   console.log(`Admin principal créé avec l'ID ${admin.id}.`);
 })();

@@ -1,9 +1,13 @@
 const env = require('./config/env');
 const { createApp } = require('./app');
 
-const app = createApp();
-
-app.listen(env.PORT, () => {
+createApp().then((app) => {
+  app.listen(env.PORT, () => {
+    // eslint-disable-next-line no-console
+    console.log(`Backend listening on http://localhost:${env.PORT}`);
+  });
+}).catch((error) => {
   // eslint-disable-next-line no-console
-  console.log(`Backend listening on http://localhost:${env.PORT}`);
+  console.error('Backend startup failed:', error);
+  process.exitCode = 1;
 });

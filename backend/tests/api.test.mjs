@@ -30,21 +30,21 @@ async function setupApp() {
   userRepository = require('../src/repositories/userRepository');
   albumRepository = require('../src/repositories/albumRepository');
   ({ hashPassword } = require('../src/utils/password'));
-  ({ db } = require('../src/config/db'));
+  db = require('../src/config/db');
 
   return appFactory();
 }
 
 async function createAuthenticatedUser(server, permissions = []) {
   const hashed = await hashPassword('Password123!');
-  const user = userRepository.createUser({
+  const user = await userRepository.createUser({
     name: 'User',
     email: `user-${Date.now()}@example.com`,
     passwordHash: hashed,
     role: 'user',
     status: 'active',
   });
-  userRepository.setPermissions(user.id, permissions);
+  await userRepository.setPermissions(user.id, permissions);
 
   const agent = request.agent(server);
   await agent.post('/api/auth/login').send({ email: user.email, password: 'Password123!' });
@@ -55,21 +55,16 @@ beforeAll(async () => {
   app = await setupApp();
 });
 
-beforeEach(() => {
-  db.exec(`
-    DELETE FROM album_access;
-    DELETE FROM photos;
-    DELETE FROM albums;
-    DELETE FROM user_permissions;
-    DELETE FROM users;
-    DELETE FROM audit_logs;
-  `);
+beforeEach(async () => {
+  for (const table of ['album_access', 'photos', 'albums', 'user_permissions', 'users', 'audit_logs']) {
+    await db.query(`DELETE FROM ${table}`);
+  }
 });
 
 describe('auth', () => {
   it('rejects bad password on login', async () => {
     const hash = await hashPassword('Password123!');
-    userRepository.createUser({
+    await userRepository.createUser({
       name: 'Admin',
       email: 'admin@example.com',
       passwordHash: hash,
@@ -99,7 +94,7 @@ describe('permissions and protected access', () => {
 
   it('blocks protected album photo listing without access', async () => {
     const ownerHash = await hashPassword('Password123!');
-    const owner = userRepository.createUser({
+    const owner = await userRepository.createUser({
       name: 'Owner',
       email: 'owner@example.com',
       passwordHash: ownerHash,
@@ -107,7 +102,7 @@ describe('permissions and protected access', () => {
       status: 'active',
     });
     const visitorHash = await hashPassword('Password123!');
-    const visitor = userRepository.createUser({
+    const visitor = await userRepository.createUser({
       name: 'Visitor',
       email: 'visitor@example.com',
       passwordHash: visitorHash,
@@ -115,14 +110,14 @@ describe('permissions and protected access', () => {
       status: 'active',
     });
 
-    userRepository.setPermissions(owner.id, ['CREATE_ALBUMS', 'UPLOAD_PHOTOS']);
-    const protectedAlbum = albumRepository.createAlbum({
+    await userRepository.setPermissions(owner.id, ['CREATE_ALBUMS', 'UPLOAD_PHOTOS']);
+    const protectedAlbum = await albumRepository.createAlbum({
       name: 'Privé',
       description: '',
       visibility: 'protected',
       passwordHash: null,
     });
-    albumRepository.setAlbumAccess(protectedAlbum.id, [owner.id]);
+    await albumRepository.setAlbumAccess(protectedAlbum.id, [owner.id]);
 
     const agent = request.agent(app);
     await agent.post('/api/auth/login').send({ email: visitor.email, password: 'Password123!' });
@@ -135,8 +130,8 @@ describe('permissions and protected access', () => {
 describe('upload validation', () => {
   it('rejects non-jpeg files and files over 1MB', async () => {
     const { user, agent } = await createAuthenticatedUser(app, ['CREATE_ALBUMS', 'UPLOAD_PHOTOS']);
-    const album = albumRepository.createAlbum({ name: 'A', description: '', visibility: 'public', passwordHash: null });
-    albumRepository.setAlbumAccess(album.id, [user.id]);
+    const album = await albumRepository.createAlbum({ name: 'A', description: '', visibility: 'public', passwordHash: null });
+    await albumRepository.setAlbumAccess(album.id, [user.id]);
 
     const pngBuffer = await sharp({
       create: { width: 10, height: 10, channels: 3, background: '#ff0000' },

@@ -1,108 +1,61 @@
-const { db } = require('../config/db');
+const { query } = require('../config/db');
+const baseSelect = `SELECT u.id, u.name, u.email, u.role, u.status, u.last_login as "lastLogin",
+  u.created_at as "createdAt", u.updated_at as "updatedAt" FROM users u`;
 
-const baseSelect = `
-  SELECT u.id, u.name, u.email, u.role, u.status, u.last_login as lastLogin, u.created_at as createdAt, u.updated_at as updatedAt
-  FROM users u
-`;
-
-function mapUser(row) {
-  if (!row) return null;
-  return row;
+async function findByEmail(email) {
+  const { rows } = await query('SELECT * FROM users WHERE email=$1', [email.toLowerCase()]);
+  return rows[0] || null;
 }
-
-function findByEmail(email) {
-  return db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase());
+async function findById(id) {
+  const { rows } = await query(`${baseSelect} WHERE u.id=$1`, [id]);
+  return rows[0] || null;
 }
-
-function findById(id) {
-  return mapUser(db.prepare(`${baseSelect} WHERE u.id = ?`).get(id));
+async function findAuthById(id) {
+  const { rows } = await query('SELECT * FROM users WHERE id=$1', [id]);
+  return rows[0] || null;
 }
-
-function findAuthById(id) {
-  return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+async function listUsers() {
+  const { rows } = await query(`${baseSelect} ORDER BY u.created_at DESC`);
+  return rows;
 }
-
-function listUsers() {
-  return db.prepare(`${baseSelect} ORDER BY u.created_at DESC`).all();
+async function createUser({ name, email, passwordHash, role = 'user', status = 'active' }) {
+  const { rows } = await query(`INSERT INTO users (name,email,password_hash,role,status) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+    [name, email.toLowerCase(), passwordHash, role, status]);
+  return findById(rows[0].id);
 }
-
-function createUser({ name, email, passwordHash, role = 'user', status = 'active' }) {
-  const result = db
-    .prepare(
-      `INSERT INTO users (name, email, password_hash, role, status)
-       VALUES (@name, @email, @passwordHash, @role, @status)`
-    )
-    .run({ name, email: email.toLowerCase(), passwordHash, role, status });
-
-  return findById(result.lastInsertRowid);
-}
-
-function updateUser(id, fields) {
-  const allowed = ['name', 'email', 'role', 'status'];
-  const entries = Object.entries(fields).filter(([key, value]) => allowed.includes(key) && value !== undefined);
+async function updateUser(id, fields) {
+  const columns = { name: 'name', email: 'email', role: 'role', status: 'status' };
+  const entries = Object.entries(fields).filter(([key, value]) => columns[key] && value !== undefined);
   if (!entries.length) return findById(id);
-
-  const setClause = entries.map(([key]) => `${key === 'email' ? 'email' : key} = @${key}`).join(', ');
-  const payload = Object.fromEntries(entries);
-  if (payload.email) payload.email = payload.email.toLowerCase();
-
-  db.prepare(`UPDATE users SET ${setClause}, updated_at = datetime('now') WHERE id = @id`).run({ ...payload, id });
+  const params = entries.map(([, value]) => value);
+  const setClause = entries.map(([key], index) => `${columns[key]}=$${index + 1}`).join(',');
+  if (fields.email) params[entries.findIndex(([key]) => key === 'email')] = fields.email.toLowerCase();
+  params.push(id);
+  await query(`UPDATE users SET ${setClause}, updated_at=CAST(CURRENT_TIMESTAMP AS TEXT) WHERE id=$${params.length}`, params);
   return findById(id);
 }
-
-function updatePassword(id, passwordHash) {
-  db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(passwordHash, id);
+async function updatePassword(id, passwordHash) {
+  await query('UPDATE users SET password_hash=$1, updated_at=CAST(CURRENT_TIMESTAMP AS TEXT) WHERE id=$2', [passwordHash, id]);
 }
-
-function deleteUser(id) {
-  return db.prepare('DELETE FROM users WHERE id = ?').run(id);
+async function deleteUser(id) { return query('DELETE FROM users WHERE id=$1', [id]); }
+async function setLastLogin(id) {
+  await query('UPDATE users SET last_login=CAST(CURRENT_TIMESTAMP AS TEXT), updated_at=CAST(CURRENT_TIMESTAMP AS TEXT) WHERE id=$1', [id]);
 }
-
-function setLastLogin(id) {
-  db.prepare("UPDATE users SET last_login = datetime('now'), updated_at = datetime('now') WHERE id = ?").run(id);
+async function getPermissions(userId) {
+  const { rows } = await query(`SELECT p.code FROM permissions p JOIN user_permissions up ON up.permission_id=p.id
+    WHERE up.user_id=$1`, [userId]);
+  return rows.map((row) => row.code);
 }
-
-function getPermissions(userId) {
-  return db
-    .prepare(
-      `SELECT p.code
-       FROM permissions p
-       JOIN user_permissions up ON up.permission_id = p.id
-       WHERE up.user_id = ?`
-    )
-    .all(userId)
-    .map((row) => row.code);
-}
-
-function setPermissions(userId, permissionCodes) {
-  db.prepare('DELETE FROM user_permissions WHERE user_id = ?').run(userId);
+async function setPermissions(userId, permissionCodes) {
+  await query('DELETE FROM user_permissions WHERE user_id=$1', [userId]);
   if (!permissionCodes.length) return;
-
-  const permissionRows = db
-    .prepare(`SELECT id, code FROM permissions WHERE code IN (${permissionCodes.map(() => '?').join(',')})`)
-    .all(...permissionCodes);
-
-  const stmt = db.prepare('INSERT INTO user_permissions (user_id, permission_id) VALUES (?, ?)');
-  for (const row of permissionRows) {
-    stmt.run(userId, row.id);
-  }
+  const { rows } = await query(`SELECT id,code FROM permissions WHERE code IN (${permissionCodes.map((_, i) => `$${i + 1}`).join(',')})`, permissionCodes);
+  for (const row of rows) await query('INSERT INTO user_permissions (user_id,permission_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [userId, row.id]);
+}
+async function listPermissions() {
+  const { rows } = await query('SELECT id,code,description FROM permissions ORDER BY code');
+  return rows;
 }
 
-function listPermissions() {
-  return db.prepare('SELECT id, code, description FROM permissions ORDER BY code').all();
-}
-
-module.exports = {
-  findByEmail,
-  findById,
-  findAuthById,
-  listUsers,
-  createUser,
-  updateUser,
-  updatePassword,
-  deleteUser,
-  setLastLogin,
-  getPermissions,
-  setPermissions,
-  listPermissions,
-};
+module.exports = { findByEmail, findById, findAuthById, listUsers, createUser, updateUser,
+  updatePassword, deleteUser, setLastLogin, getPermissions, setPermissions, listPermissions };

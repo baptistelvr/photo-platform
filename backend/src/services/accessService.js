@@ -10,7 +10,7 @@ function hasPermission(user, permission) {
   return user.permissions?.includes(permission);
 }
 
-function canAccessAlbum(user, album) {
+async function canAccessAlbum(user, album) {
   if (!album) return false;
   if (album.visibility === 'public') return true;
   if (!user) return false;

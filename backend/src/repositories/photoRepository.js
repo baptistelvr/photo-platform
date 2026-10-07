@@ -1,41 +1,23 @@
-const { db } = require('../config/db');
+const { query } = require('../config/db');
 
-function createPhoto(payload) {
-  const result = db
-    .prepare(
-      `INSERT INTO photos (
-        album_id, filename, original_name, original_path, thumbnail_path,
-        size, mime_type, width, height, uploaded_by
-      ) VALUES (
-        @albumId, @filename, @originalName, @originalPath, @thumbnailPath,
-        @size, @mimeType, @width, @height, @uploadedBy
-      )`
-    )
-    .run(payload);
-
-  return getPhotoById(result.lastInsertRowid);
+async function createPhoto(payload) {
+  const { rows } = await query(`INSERT INTO photos (album_id,filename,original_name,original_path,thumbnail_path,
+    size,mime_type,width,height,uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+  [payload.albumId, payload.filename, payload.originalName, payload.originalPath, payload.thumbnailPath,
+    payload.size, payload.mimeType, payload.width, payload.height, payload.uploadedBy]);
+  return getPhotoById(rows[0].id);
 }
-
-function getPhotoById(id) {
-  return db
-    .prepare(
-      `SELECT p.id, p.album_id as albumId, p.filename, p.original_name as originalName, p.original_path as originalPath,
-              p.thumbnail_path as thumbnailPath, p.size, p.mime_type as mimeType, p.width, p.height,
-              p.uploaded_by as uploadedBy, p.created_at as createdAt,
-              a.visibility, a.password_hash as albumPasswordHash
-       FROM photos p
-       JOIN albums a ON a.id = p.album_id
-       WHERE p.id = ?`
-    )
-    .get(id);
+async function getPhotoById(id) {
+  const { rows } = await query(`SELECT p.id,p.album_id as "albumId",p.filename,p.original_name as "originalName",
+    p.original_path as "originalPath",p.thumbnail_path as "thumbnailPath",p.size,p.mime_type as "mimeType",
+    p.width,p.height,p.uploaded_by as "uploadedBy",p.created_at as "createdAt",a.visibility,
+    a.password_hash as "albumPasswordHash" FROM photos p JOIN albums a ON a.id=p.album_id WHERE p.id=$1`, [id]);
+  return rows[0] || null;
 }
-
-function deletePhoto(id) {
-  return db.prepare('DELETE FROM photos WHERE id = ?').run(id);
-}
-
-function movePhoto(photoId, targetAlbumId) {
-  db.prepare("UPDATE photos SET album_id = ?, created_at = created_at WHERE id = ?").run(targetAlbumId, photoId);
+async function deletePhoto(id) { return query('DELETE FROM photos WHERE id=$1', [id]); }
+async function movePhoto(photoId, targetAlbumId, paths) {
+  await query('UPDATE photos SET album_id=$1,original_path=$2,thumbnail_path=$3 WHERE id=$4',
+    [targetAlbumId, paths.originalPath, paths.thumbnailPath, photoId]);
   return getPhotoById(photoId);
 }
 

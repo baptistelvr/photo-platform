@@ -1,16 +1,51 @@
-const fs = require('node:fs');
 const path = require('node:path');
-const Database = require('better-sqlite3');
 const env = require('./env');
 
-const dbPath = path.resolve(env.DATABASE_URL);
-fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-const db = new Database(dbPath);
-db.pragma('foreign_keys = ON');
+const isPostgres = /^postgres(?:ql)?:\/\//i.test(env.DATABASE_URL);
+let sqlite;
+let pool;
 
-function transaction(callback) {
-  const tx = db.transaction(callback);
-  return tx();
+if (isPostgres) {
+  const { Pool } = require('@neondatabase/serverless');
+  pool = new Pool({ connectionString: env.DATABASE_URL });
+} else if (!process.env.VERCEL) {
+  const fs = require('node:fs');
+  const Database = require('better-sqlite3');
+  const dbPath = path.resolve(env.DATABASE_URL);
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  sqlite = new Database(dbPath);
+  sqlite.pragma('foreign_keys = ON');
 }
 
-module.exports = { db, transaction };
+async function query(text, params = []) {
+  if (pool) {
+    const result = await pool.query(text, params);
+    return { rows: result.rows, rowCount: result.rowCount };
+  }
+
+  if (!sqlite) throw new Error('DATABASE_URL must point to the connected Neon Postgres database on Vercel.');
+
+  const sqliteSql = text.replace(/\$(\d+)/g, '?');
+  const statement = sqlite.prepare(sqliteSql);
+  if (/\bRETURNING\b/i.test(sqliteSql) || /^\s*(SELECT|WITH|PRAGMA)\b/i.test(sqliteSql)) {
+    const rows = statement.all(...params);
+    return { rows, rowCount: rows.length };
+  }
+  const result = statement.run(...params);
+  return { rows: [], rowCount: result.changes };
+}
+
+function assertProductionConfiguration() {
+  if (!process.env.VERCEL) return;
+  if (!isPostgres) throw new Error('DATABASE_URL must point to the connected Neon Postgres database on Vercel.');
+  if (!process.env.BLOB_STORE_ID && !process.env.BLOB_READ_WRITE_TOKEN) {
+    throw new Error('Connect a private Vercel Blob store before starting the API.');
+  }
+}
+
+async function close() {
+  if (pool) await pool.end();
+  if (sqlite) sqlite.close();
+}
+
+module.exports = { query, close, assertProductionConfiguration, dialect: isPostgres ? 'postgres' : 'sqlite', pool };

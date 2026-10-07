@@ -1,65 +1,103 @@
+const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const crypto = require('node:crypto');
+const { put, get, del } = require('@vercel/blob');
 const env = require('../config/env');
+const useBlob = Boolean(process.env.VERCEL || process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
 
-async function ensureAlbumDirs(albumId) {
-  const albumDir = path.join(env.PICTURES_DIR, `album-${albumId}`);
-  const originalDir = path.join(albumDir, 'original');
-  const thumbnailDir = path.join(albumDir, 'thumbnails');
-  await fs.mkdir(originalDir, { recursive: true });
-  await fs.mkdir(thumbnailDir, { recursive: true });
-  return { albumDir, originalDir, thumbnailDir };
+function albumFolder(name) {
+  const folder = String(name).normalize('NFKC').trim().replace(/[\\/\0]/g, '-')
+    .replace(/\.\./g, '-').replace(/\s+/g, ' ');
+  if (!folder || folder === '.' || folder.length > 120) throw new Error('Invalid album folder name');
+  return folder;
 }
 
 function generateFilename() {
-  return `${Date.now()}-${crypto.randomBytes(8).toString('hex')}.jpg`;
+  return `${Date.now()}-${crypto.randomBytes(12).toString('hex')}.jpg`;
 }
 
-async function storePhotoBuffers(albumId, originalBuffer, thumbnailBuffer) {
-  const dirs = await ensureAlbumDirs(albumId);
+async function storePhotoBuffers(album, originalBuffer, thumbnailBuffer) {
+  const folder = albumFolder(album.name);
   const filename = generateFilename();
-  const originalRelative = path.join(`album-${albumId}`, 'original', filename);
-  const thumbnailRelative = path.join(`album-${albumId}`, 'thumbnails', filename);
-  await fs.writeFile(path.join(env.PICTURES_DIR, originalRelative), originalBuffer);
-  await fs.writeFile(path.join(env.PICTURES_DIR, thumbnailRelative), thumbnailBuffer);
-  return { filename, originalRelative, thumbnailRelative };
+  const originalPath = `Pictures/${folder}/original/${filename}`;
+  const thumbnailPath = `Pictures/${folder}/thumbnails/${filename}`;
+  if (!useBlob) {
+    const base = path.join(env.PICTURES_DIR, folder);
+    await fs.mkdir(path.join(base, 'original'), { recursive: true });
+    await fs.mkdir(path.join(base, 'thumbnails'), { recursive: true });
+    await fs.writeFile(path.join(base, 'original', filename), originalBuffer);
+    await fs.writeFile(path.join(base, 'thumbnails', filename), thumbnailBuffer);
+    return { filename, originalRelative: originalPath, thumbnailRelative: thumbnailPath };
+  }
+  await put(originalPath, originalBuffer, { access: 'private', contentType: 'image/jpeg', addRandomSuffix: false });
+  try {
+    await put(thumbnailPath, thumbnailBuffer, { access: 'private', contentType: 'image/jpeg', addRandomSuffix: false });
+  } catch (error) {
+    await del(originalPath, { access: 'private' }).catch(() => {});
+    throw error;
+  }
+  return { filename, originalRelative: originalPath, thumbnailRelative: thumbnailPath };
 }
 
-async function movePhotoFiles(photo, targetAlbumId) {
-  const dirs = await ensureAlbumDirs(targetAlbumId);
-  const sourceOriginal = path.join(env.PICTURES_DIR, photo.originalPath);
-  const sourceThumb = path.join(env.PICTURES_DIR, photo.thumbnailPath);
-  const targetOriginal = path.join(dirs.originalDir, photo.filename);
-  const targetThumb = path.join(dirs.thumbnailDir, photo.filename);
-  await fs.rename(sourceOriginal, targetOriginal);
-  await fs.rename(sourceThumb, targetThumb);
-  return {
-    originalPath: path.join(`album-${targetAlbumId}`, 'original', photo.filename),
-    thumbnailPath: path.join(`album-${targetAlbumId}`, 'thumbnails', photo.filename),
-  };
+async function readPhoto(pathname) {
+  if (!useBlob) {
+    const relativePath = pathname.replace(/^Pictures[\\/]/, '');
+    const absolutePath = path.resolve(env.PICTURES_DIR, relativePath);
+    const root = path.resolve(env.PICTURES_DIR);
+    if (!absolutePath.startsWith(`${root}${path.sep}`)) throw new Error('Unsafe path detected');
+    try { return { stream: require('node:fs').createReadStream(absolutePath) }; }
+    catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  }
+  return get(pathname, { access: 'private' });
 }
 
 async function deletePhotoFiles(photo) {
-  await Promise.allSettled([
-    fs.unlink(path.join(env.PICTURES_DIR, photo.originalPath)),
-    fs.unlink(path.join(env.PICTURES_DIR, photo.thumbnailPath)),
-  ]);
-}
-
-function resolveSafePath(relativePath) {
-  const absolute = path.resolve(env.PICTURES_DIR, relativePath);
-  const root = path.resolve(env.PICTURES_DIR);
-  if (!absolute.startsWith(root)) {
-    throw new Error('Unsafe path detected');
+  if (!useBlob) {
+    await Promise.all([photo.originalPath, photo.thumbnailPath].map(async (pathname) => {
+      const relativePath = pathname.replace(/^Pictures[\\/]/, '');
+      const absolutePath = path.resolve(env.PICTURES_DIR, relativePath);
+      const root = path.resolve(env.PICTURES_DIR);
+      if (!absolutePath.startsWith(`${root}${path.sep}`)) throw new Error('Unsafe path detected');
+      await fs.unlink(absolutePath).catch((error) => { if (error.code !== 'ENOENT') throw error; });
+    }));
+    return;
   }
-  return absolute;
+  await Promise.all([photo.originalPath, photo.thumbnailPath].map((pathname) => del(pathname, { access: 'private' })));
 }
 
-module.exports = {
-  ensureAlbumDirs,
-  storePhotoBuffers,
-  movePhotoFiles,
-  deletePhotoFiles,
-  resolveSafePath,
-};
+async function movePhotoFiles(photo, targetAlbum) {
+  const filename = photo.filename;
+  const folder = albumFolder(targetAlbum.name);
+  const originalPath = `Pictures/${folder}/original/${filename}`;
+  const thumbnailPath = `Pictures/${folder}/thumbnails/${filename}`;
+  const original = await readPhoto(photo.originalPath);
+  const thumbnail = await readPhoto(photo.thumbnailPath);
+  if (!original || !thumbnail) throw new Error('Photo file missing from private storage');
+  const toBuffer = async (stream) => {
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    return Buffer.concat(chunks);
+  };
+  const [originalBuffer, thumbnailBuffer] = await Promise.all([toBuffer(original.stream), toBuffer(thumbnail.stream)]);
+  if (!useBlob) {
+    for (const [pathname, buffer] of [[originalPath, originalBuffer], [thumbnailPath, thumbnailBuffer]]) {
+      const relativePath = pathname.replace(/^Pictures\//, '');
+      const absolutePath = path.resolve(env.PICTURES_DIR, relativePath);
+      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+      await fs.writeFile(absolutePath, buffer);
+    }
+    await deletePhotoFiles(photo);
+    return { originalPath, thumbnailPath };
+  }
+  await put(originalPath, originalBuffer, { access: 'private', contentType: 'image/jpeg', addRandomSuffix: false });
+  try {
+    await put(thumbnailPath, thumbnailBuffer, { access: 'private', contentType: 'image/jpeg', addRandomSuffix: false });
+  } catch (error) {
+    await del(originalPath, { access: 'private' }).catch(() => {});
+    throw error;
+  }
+  await deletePhotoFiles(photo);
+  return { originalPath, thumbnailPath };
+}
+
+module.exports = { storePhotoBuffers, readPhoto, deletePhotoFiles, movePhotoFiles, albumFolder };

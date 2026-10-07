@@ -1,6 +1,5 @@
-const fs = require('node:fs');
-const path = require('node:path');
 const multer = require('multer');
+const { Readable } = require('node:stream');
 const { HttpError } = require('../utils/httpError');
 const { albumSchema, photoMoveSchema } = require('../utils/schemas');
 const albumRepository = require('../repositories/albumRepository');
@@ -12,22 +11,22 @@ const env = require('../config/env');
 const { validateJpegUpload } = require('../utils/fileValidation');
 const { normalizeJpeg } = require('../services/imageService');
 const storageService = require('../services/storageService');
-const { db } = require('../config/db');
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: env.MAX_FILE_SIZE_BYTES } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: env.MAX_FILE_SIZE_BYTES, files: 3 } });
 
-function filterVisibleAlbums(user, albums) {
-  return albums.filter((album) => {
+async function filterVisibleAlbums(user, albums) {
+  const visible = await Promise.all(albums.map(async (album) => {
     if (album.visibility === 'public') return true;
     if (!user) return false;
     if (user.role === 'main_admin') return true;
     if (user.permissions?.includes('VIEW_PROTECTED_ALBUMS')) return true;
     return albumRepository.userHasAlbumAccess(album.id, user.id);
-  });
+  }));
+  return albums.filter((_, index) => visible[index]);
 }
 
 async function canAccessAlbumWithPassword(req, album) {
-  if (canAccessAlbum(req.user || null, album)) return true;
+  if (await canAccessAlbum(req.user || null, album)) return true;
   if (album.visibility !== 'protected' || !album.passwordHash) return false;
   const unlocked = req.session?.unlockedAlbums || [];
   if (unlocked.includes(album.id)) return true;
@@ -40,16 +39,18 @@ async function canAccessAlbumWithPassword(req, album) {
   return isValid;
 }
 
-function listAlbums(req, res) {
-  const albums = filterVisibleAlbums(req.user || null, albumRepository.listAlbums());
-  res.json({ success: true, data: albums });
+async function listAlbums(req, res, next) {
+  try {
+    const albums = await filterVisibleAlbums(req.user || null, await albumRepository.listAlbums());
+    res.json({ success: true, data: albums });
+  } catch (error) { next(error); }
 }
 
 async function createAlbum(req, res, next) {
   try {
     const payload = albumSchema.parse(req.body);
     const passwordHash = payload.visibility === 'protected' && payload.password ? await hashPassword(payload.password) : null;
-    const album = albumRepository.createAlbum({
+    const album = await albumRepository.createAlbum({
       name: payload.name,
       description: payload.description,
       visibility: payload.visibility,
@@ -57,10 +58,10 @@ async function createAlbum(req, res, next) {
     });
 
     if (payload.accessUserIds?.length) {
-      albumRepository.setAlbumAccess(album.id, payload.accessUserIds);
+      await albumRepository.setAlbumAccess(album.id, payload.accessUserIds);
     }
 
-    addAuditLog({ actorId: req.user.id, action: 'ALBUM_CREATE', objectType: 'album', objectId: String(album.id), metadata: { name: album.name }, ipAddress: req.ip });
+    await addAuditLog({ actorId: req.user.id, action: 'ALBUM_CREATE', objectType: 'album', objectId: String(album.id), metadata: { name: album.name }, ipAddress: req.ip });
     res.status(201).json({ success: true, data: album });
   } catch (error) {
     next(error);
@@ -69,7 +70,7 @@ async function createAlbum(req, res, next) {
 
 async function getAlbum(req, res, next) {
   try {
-    const album = albumRepository.getAlbumById(Number(req.params.id));
+    const album = await albumRepository.getAlbumById(Number(req.params.id));
     if (!album) throw new HttpError(404, 'NOT_FOUND', 'Album introuvable');
 
     const userHasAccess = await canAccessAlbumWithPassword(req, album);
@@ -81,7 +82,7 @@ async function getAlbum(req, res, next) {
       );
     }
 
-    const accessUserIds = albumRepository.getAlbumAccessUserIds(album.id);
+    const accessUserIds = await albumRepository.getAlbumAccessUserIds(album.id);
     res.json({
       success: true,
       data: {
@@ -98,7 +99,7 @@ async function getAlbum(req, res, next) {
 async function updateAlbum(req, res, next) {
   try {
     const albumId = Number(req.params.id);
-    const current = albumRepository.getAlbumById(albumId);
+    const current = await albumRepository.getAlbumById(albumId);
     if (!current) throw new HttpError(404, 'NOT_FOUND', 'Album introuvable');
 
     const payload = albumSchema.parse(req.body);
@@ -109,7 +110,7 @@ async function updateAlbum(req, res, next) {
       passwordHash = await hashPassword(payload.password);
     }
 
-    const updated = albumRepository.updateAlbum(albumId, {
+    const updated = await albumRepository.updateAlbum(albumId, {
       name: payload.name,
       description: payload.description,
       visibility: payload.visibility,
@@ -117,11 +118,21 @@ async function updateAlbum(req, res, next) {
       coverPhotoId: payload.coverPhotoId,
     });
 
-    if (payload.accessUserIds) {
-      albumRepository.setAlbumAccess(albumId, payload.accessUserIds);
+    if (current.name !== updated.name) {
+      const photos = await albumRepository.listAlbumPhotos(albumId);
+      const renamedAlbum = { ...current, name: updated.name };
+      for (const item of photos) {
+        const photo = await photoRepository.getPhotoById(item.id);
+        const movedPaths = await storageService.movePhotoFiles(photo, renamedAlbum);
+        await photoRepository.movePhoto(photo.id, albumId, movedPaths);
+      }
     }
 
-    addAuditLog({ actorId: req.user.id, action: 'ALBUM_UPDATE', objectType: 'album', objectId: String(albumId), ipAddress: req.ip });
+    if (payload.accessUserIds) {
+      await albumRepository.setAlbumAccess(albumId, payload.accessUserIds);
+    }
+
+    await addAuditLog({ actorId: req.user.id, action: 'ALBUM_UPDATE', objectType: 'album', objectId: String(albumId), ipAddress: req.ip });
     res.json({ success: true, data: updated });
   } catch (error) {
     next(error);
@@ -131,22 +142,17 @@ async function updateAlbum(req, res, next) {
 async function deleteAlbum(req, res, next) {
   try {
     const albumId = Number(req.params.id);
-    const album = albumRepository.getAlbumById(albumId);
+    const album = await albumRepository.getAlbumById(albumId);
     if (!album) throw new HttpError(404, 'NOT_FOUND', 'Album introuvable');
 
-    const photos = albumRepository.listAlbumPhotos(albumId);
+    const photos = await albumRepository.listAlbumPhotos(albumId);
     for (const photo of photos) {
-      const full = photoRepository.getPhotoById(photo.id);
+      const full = await photoRepository.getPhotoById(photo.id);
       await storageService.deletePhotoFiles(full);
     }
 
-    const albumDir = path.join(env.PICTURES_DIR, `album-${albumId}`);
-    if (fs.existsSync(albumDir)) {
-      fs.rmSync(albumDir, { recursive: true, force: true });
-    }
-
-    albumRepository.deleteAlbum(albumId);
-    addAuditLog({ actorId: req.user.id, action: 'ALBUM_DELETE', objectType: 'album', objectId: String(albumId), ipAddress: req.ip });
+    await albumRepository.deleteAlbum(albumId);
+    await addAuditLog({ actorId: req.user.id, action: 'ALBUM_DELETE', objectType: 'album', objectId: String(albumId), ipAddress: req.ip });
     res.json({ success: true });
   } catch (error) {
     next(error);
@@ -155,13 +161,13 @@ async function deleteAlbum(req, res, next) {
 
 async function listAlbumPhotos(req, res, next) {
   try {
-    const album = albumRepository.getAlbumById(Number(req.params.id));
+    const album = await albumRepository.getAlbumById(Number(req.params.id));
     if (!album) throw new HttpError(404, 'NOT_FOUND', 'Album introuvable');
     if (!(await canAccessAlbumWithPassword(req, album))) {
       throw new HttpError(403, 'FORBIDDEN', 'Accès album refusé');
     }
 
-    const photos = albumRepository.listAlbumPhotos(album.id);
+    const photos = await albumRepository.listAlbumPhotos(album.id);
     res.json({ success: true, data: photos });
   } catch (error) {
     next(error);
@@ -171,7 +177,7 @@ async function listAlbumPhotos(req, res, next) {
 async function uploadAlbumPhotos(req, res, next) {
   try {
     const albumId = Number(req.params.id);
-    const album = albumRepository.getAlbumById(albumId);
+    const album = await albumRepository.getAlbumById(albumId);
     if (!album) throw new HttpError(404, 'NOT_FOUND', 'Album introuvable');
     if (!(await canAccessAlbumWithPassword(req, album))) {
       throw new HttpError(403, 'FORBIDDEN', 'Accès album refusé');
@@ -184,9 +190,9 @@ async function uploadAlbumPhotos(req, res, next) {
     for (const file of files) {
       await validateJpegUpload(file);
       const transformed = await normalizeJpeg(file.buffer);
-      const stored = await storageService.storePhotoBuffers(albumId, transformed.normalized, transformed.thumbnail);
+      const stored = await storageService.storePhotoBuffers(album, transformed.normalized, transformed.thumbnail);
 
-      const photo = photoRepository.createPhoto({
+      const photo = await photoRepository.createPhoto({
         albumId,
         filename: stored.filename,
         originalName: file.originalname,
@@ -201,7 +207,7 @@ async function uploadAlbumPhotos(req, res, next) {
       uploaded.push(photo);
     }
 
-    addAuditLog({ actorId: req.user.id, action: 'PHOTO_UPLOAD', objectType: 'album', objectId: String(albumId), metadata: { count: uploaded.length }, ipAddress: req.ip });
+    await addAuditLog({ actorId: req.user.id, action: 'PHOTO_UPLOAD', objectType: 'album', objectId: String(albumId), metadata: { count: uploaded.length }, ipAddress: req.ip });
     res.status(201).json({ success: true, data: uploaded });
   } catch (error) {
     next(error);
@@ -210,9 +216,9 @@ async function uploadAlbumPhotos(req, res, next) {
 
 async function getPhoto(req, res, next) {
   try {
-    const photo = photoRepository.getPhotoById(Number(req.params.id));
+    const photo = await photoRepository.getPhotoById(Number(req.params.id));
     if (!photo) throw new HttpError(404, 'NOT_FOUND', 'Photo introuvable');
-    const album = albumRepository.getAlbumById(photo.albumId);
+    const album = await albumRepository.getAlbumById(photo.albumId);
     if (!(await canAccessAlbumWithPassword(req, album))) {
       throw new HttpError(403, 'FORBIDDEN', 'Accès photo refusé');
     }
@@ -240,17 +246,19 @@ async function getPhoto(req, res, next) {
 
 async function streamPhoto(req, res, next) {
   try {
-    const photo = photoRepository.getPhotoById(Number(req.params.id));
+    const photo = await photoRepository.getPhotoById(Number(req.params.id));
     if (!photo) throw new HttpError(404, 'NOT_FOUND', 'Photo introuvable');
-    const album = albumRepository.getAlbumById(photo.albumId);
+    const album = await albumRepository.getAlbumById(photo.albumId);
     if (!(await canAccessAlbumWithPassword(req, album))) {
       throw new HttpError(403, 'FORBIDDEN', 'Accès photo refusé');
     }
 
     const relative = req.params.variant === 'thumbnail' ? photo.thumbnailPath : photo.originalPath;
-    const safePath = storageService.resolveSafePath(relative);
-    res.type('image/jpeg');
-    res.sendFile(safePath);
+    const image = await storageService.readPhoto(relative);
+    if (!image) throw new HttpError(404, 'NOT_FOUND', 'Fichier photo introuvable');
+    res.type('image/jpeg').set('Cache-Control', 'private, no-store');
+    const stream = typeof image.stream.pipe === 'function' ? image.stream : Readable.fromWeb(image.stream);
+    stream.on('error', next).pipe(res);
   } catch (error) {
     next(error);
   }
@@ -258,7 +266,7 @@ async function streamPhoto(req, res, next) {
 
 async function deletePhoto(req, res, next) {
   try {
-    const photo = photoRepository.getPhotoById(Number(req.params.id));
+    const photo = await photoRepository.getPhotoById(Number(req.params.id));
     if (!photo) throw new HttpError(404, 'NOT_FOUND', 'Photo introuvable');
 
     if (!hasPermission(req.user, 'DELETE_PHOTOS')) {
@@ -266,8 +274,8 @@ async function deletePhoto(req, res, next) {
     }
 
     await storageService.deletePhotoFiles(photo);
-    photoRepository.deletePhoto(photo.id);
-    addAuditLog({ actorId: req.user.id, action: 'PHOTO_DELETE', objectType: 'photo', objectId: String(photo.id), ipAddress: req.ip });
+    await photoRepository.deletePhoto(photo.id);
+    await addAuditLog({ actorId: req.user.id, action: 'PHOTO_DELETE', objectType: 'photo', objectId: String(photo.id), ipAddress: req.ip });
 
     res.json({ success: true });
   } catch (error) {
@@ -278,22 +286,17 @@ async function deletePhoto(req, res, next) {
 async function movePhoto(req, res, next) {
   try {
     const payload = photoMoveSchema.parse(req.body);
-    const photo = photoRepository.getPhotoById(payload.photoId);
+    const photo = await photoRepository.getPhotoById(payload.photoId);
     if (!photo) throw new HttpError(404, 'NOT_FOUND', 'Photo introuvable');
 
-    const targetAlbum = albumRepository.getAlbumById(payload.targetAlbumId);
+    const targetAlbum = await albumRepository.getAlbumById(payload.targetAlbumId);
     if (!targetAlbum) throw new HttpError(404, 'NOT_FOUND', 'Album cible introuvable');
 
-    const movedPaths = await storageService.movePhotoFiles(photo, payload.targetAlbumId);
-    db.prepare('UPDATE photos SET album_id = ?, original_path = ?, thumbnail_path = ? WHERE id = ?').run(
-      payload.targetAlbumId,
-      movedPaths.originalPath,
-      movedPaths.thumbnailPath,
-      photo.id
-    );
+    const movedPaths = await storageService.movePhotoFiles(photo, targetAlbum);
+    const movedPhoto = await photoRepository.movePhoto(photo.id, targetAlbum.id, movedPaths);
 
-    addAuditLog({ actorId: req.user.id, action: 'PHOTO_MOVE', objectType: 'photo', objectId: String(photo.id), metadata: { from: photo.albumId, to: payload.targetAlbumId }, ipAddress: req.ip });
-    res.json({ success: true, data: photoRepository.getPhotoById(photo.id) });
+    await addAuditLog({ actorId: req.user.id, action: 'PHOTO_MOVE', objectType: 'photo', objectId: String(photo.id), metadata: { from: photo.albumId, to: payload.targetAlbumId }, ipAddress: req.ip });
+    res.json({ success: true, data: movedPhoto });
   } catch (error) {
     next(error);
   }
