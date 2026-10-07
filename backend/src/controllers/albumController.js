@@ -303,8 +303,7 @@ async function movePhoto(req, res, next) {
   }
 }
 
-const albumController = function albumController() {};
-Object.assign(albumController, {
+module.exports = {
   upload,
   listAlbums,
   createAlbum,
@@ -317,6 +316,8 @@ Object.assign(albumController, {
   streamPhoto,
   deletePhoto,
   movePhoto,
-});
-module.exports = albumController;
+};
+module.exports.getPhoto = getPhoto;
+module.exports.streamPhoto = streamPhoto;
+module.exports.deletePhoto = deletePhoto;
 
