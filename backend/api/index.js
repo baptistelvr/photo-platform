@@ -16,5 +16,10 @@ if (typeof createVercelApp === 'function') {
 } else if (typeof exportedApp === 'function' && typeof exportedApp.use === 'function') {
   module.exports = exportedApp;
 } else {
-  throw new TypeError('The backend must export a Vercel Express application.');
+  const shape = candidates.map((candidate) => {
+    if (!candidate) return String(candidate);
+    const keys = Object.keys(candidate).slice(0, 12).join(',');
+    return `${typeof candidate}[${keys}]`;
+  }).join(' -> ');
+  throw new TypeError(`The backend must export a Vercel Express application. Loaded exports: ${shape}`);
 }
