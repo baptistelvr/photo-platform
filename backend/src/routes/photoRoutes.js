@@ -2,6 +2,7 @@ const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 &
 const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
 const albumController = unwrap(require('../controllers/albumController'));
+const movePhotoHandler = unwrap(albumController.movePhoto);
 const { requireAuth, requirePermission } = unwrap(require('../middlewares/auth'));
 const { PERMISSIONS } = unwrap(require('../constants/permissions'));
 
@@ -25,7 +26,7 @@ router.get('/:id/thumbnail', (req, res, next) => {
   return albumController.streamPhoto(req, res, next);
 });
 router.delete('/:id', requireAuth, requirePermission(PERMISSIONS.DELETE_PHOTOS), albumController.deletePhoto);
-router.post('/move', requireAuth, requirePermission(PERMISSIONS.MOVE_PHOTOS), albumController.movePhoto);
+router.post('/move', requireAuth, requirePermission(PERMISSIONS.MOVE_PHOTOS), movePhotoHandler);
 
 module.exports = router;
 
