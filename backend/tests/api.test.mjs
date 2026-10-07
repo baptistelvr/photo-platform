@@ -260,3 +260,26 @@ describe('user management', () => {
     expect((await request(app).get(`/api/albums/${album.id}/photos`)).body.data).toHaveLength(1);
   });
 });
+
+describe('home page showcase', () => {
+  it('only returns photos from public albums, and only lets the CDN cache those', async () => {
+    const admin = await createUser({ role: 'main_admin' });
+    const agent = await signIn(admin);
+    const pub = await albumRepository.createAlbum({ name: 'Public', visibility: 'public', passwordHash: null });
+    const priv = await albumRepository.createAlbum({ name: 'Privé', visibility: 'protected', passwordHash: null });
+    const image = await jpeg(40, 30);
+    const upload = (album, name) => agent.post(`/api/albums/${album.id}/photos`).attach('photos', image, { filename: name, contentType: 'image/jpeg' });
+    const publicPhoto = (await upload(pub, 'a.jpg')).body.data[0];
+    const privatePhoto = (await upload(priv, 'b.jpg')).body.data[0];
+
+    const response = await request(app).get('/api/photos/showcase?limit=10');
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({ totalPhotos: 1, totalAlbums: 1 });
+    expect(response.body.data.photos).toEqual([{ id: publicPhoto.id, albumId: pub.id, width: 40, height: 30 }]);
+
+    const publicImage = await request(app).get(`/api/photos/${publicPhoto.id}/thumbnail`);
+    expect(publicImage.headers['cache-control']).toContain('s-maxage');
+    const privateImage = await agent.get(`/api/photos/${privatePhoto.id}/thumbnail`);
+    expect(privateImage.headers['cache-control']).toBe('private, max-age=3600');
+  });
+});

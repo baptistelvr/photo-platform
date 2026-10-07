@@ -74,14 +74,17 @@ function streamVariant(variant) {
   return async (req, res, next) => {
     try {
       const photo = await loadPhoto(req.params.id);
-      await loadReadableAlbum(req, photo.albumId);
+      const album = await loadReadableAlbum(req, photo.albumId);
 
       const stream = await storageService.readPhoto(variant === 'thumbnail' ? photo.thumbnailPath : photo.originalPath);
       if (!stream) throw new HttpError(404, 'NOT_FOUND', 'Fichier photo introuvable');
 
-      // A photo id always maps to the same pixels; a short private cache keeps galleries snappy
-      // without letting revoked access linger for long.
-      res.type('image/jpeg').set('Cache-Control', 'private, max-age=3600');
+      // A photo id always maps to the same pixels. Public albums may be cached by
+      // Vercel's CDN (one function call serves every visitor); anything else stays
+      // in the viewer's browser only, briefly, so revoked access does not linger.
+      res.type('image/jpeg').set('Cache-Control', album.visibility === 'public'
+        ? 'public, max-age=3600, s-maxage=3600'
+        : 'private, max-age=3600');
       if (variant === 'file' && req.query.download === '1') {
         res.attachment(photo.originalName || `photo-${photo.id}.jpg`);
       }
@@ -94,6 +97,21 @@ function streamVariant(variant) {
       next(error);
     }
   };
+}
+
+/** Random photos from public albums, plus totals, for the home page. */
+async function showcase(req, res, next) {
+  try {
+    const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 32, 1), 80);
+    const [photos, totals] = await Promise.all([
+      photoRepository.listPublicShowcase(limit),
+      photoRepository.publicTotals(),
+    ]);
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, data: { photos, totalPhotos: totals.photos, totalAlbums: totals.albums } });
+  } catch (error) {
+    next(error);
+  }
 }
 
 async function deletePhoto(req, res, next) {
@@ -135,6 +153,7 @@ module.exports = {
   upload,
   uploadAlbumPhotos,
   getPhoto,
+  showcase,
   streamThumbnail: streamVariant('thumbnail'),
   streamOriginal: streamVariant('file'),
   deletePhoto,

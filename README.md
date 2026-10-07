@@ -61,6 +61,12 @@ Sur la page **Importer**, glissez un dossier (ou cliquez sur « choisissez un do
 
 Les photos de plus de 1 Mo sont réduites dans le navigateur avant l'envoi (2560 px maximum, orientation corrigée). Vos fichiers d'origine ne sont pas modifiés. L'envoi se fait trois photos à la fois, avec nouvel essai automatique en cas de coupure ; si l'import est interrompu, il suffit de glisser à nouveau le même dossier : les photos déjà présentes dans l'album (même nom de fichier) sont sautées. Laissez l'onglet ouvert pendant l'envoi.
 
+## Page d'accueil
+
+Le fond de l'accueil est un mur de photos en 3D qui défile en continu. Les photos sont tirées au hasard parmi les **albums publics uniquement** (`GET /api/photos/showcase`) ; un album protégé n'y apparaît jamais, même pour un administrateur connecté. Un clic sur une photo l'ouvre dans sa visionneuse. Le mur suit légèrement la souris, s'arrête au survol d'une rangée ou quand il sort de l'écran, et reste immobile si le système demande de réduire les animations.
+
+Les miniatures des albums publics sont mises en cache une heure par le CDN de Vercel, ce qui évite d'appeler la fonction pour chaque visiteur. Conséquence : si un album public devient protégé, ses images peuvent rester accessibles par leur adresse directe pendant une heure au plus. Les images des albums protégés ne sont jamais mises en cache côté CDN.
+
 ## Règles côté stockage
 
 - JPEG uniquement, 1 Mo maximum par fichier. Le contrôle porte sur l'extension, le type MIME, la signature binaire, puis un décodage complet.

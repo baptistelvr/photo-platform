@@ -31,8 +31,25 @@ async function updatePaths(photoId, paths) {
     [paths.originalPath, paths.thumbnailPath, photoId]);
 }
 
+/** Random photos from public albums only, for the home page wall. */
+async function listPublicShowcase(limit) {
+  const { rows } = await query(`SELECT p.id, p.album_id AS "albumId", p.width, p.height
+    FROM photos p JOIN albums a ON a.id = p.album_id
+    WHERE a.visibility = 'public' ORDER BY RANDOM() LIMIT $1`, [limit]);
+  return rows;
+}
+
+async function publicTotals() {
+  const { rows } = await query(`SELECT CAST(COUNT(*) AS INTEGER) AS photos,
+    CAST(COUNT(DISTINCT p.album_id) AS INTEGER) AS albums
+    FROM photos p JOIN albums a ON a.id = p.album_id WHERE a.visibility = 'public'`);
+  return rows[0];
+}
+
 async function reassignUploader(fromUserId, toUserId) {
   await query('UPDATE photos SET uploaded_by = $1 WHERE uploaded_by = $2', [toUserId, fromUserId]);
 }
 
-module.exports = { createPhoto, getPhotoById, deletePhoto, movePhoto, updatePaths, reassignUploader };
+module.exports = {
+  createPhoto, getPhotoById, deletePhoto, movePhoto, updatePaths, reassignUploader, listPublicShowcase, publicTotals,
+};

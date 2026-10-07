@@ -90,6 +90,7 @@ export const api = {
     form.append('photos', file);
     return request(`/api/albums/${albumId}/photos`, { method: 'POST', body: form, signal });
   },
+  showcase: (limit = 32) => request(`/api/photos/showcase?limit=${limit}`),
   movePhoto: (photoId, targetAlbumId) => request('/api/photos/move', { method: 'POST', body: { photoId, targetAlbumId } }),
   deletePhoto: (id) => request(`/api/photos/${id}`, { method: 'DELETE' }),
 
