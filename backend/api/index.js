@@ -4,14 +4,19 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const session = require('express-session');
 const PostgreSQLStore = require('connect-pg-simple')(session);
-const env = require('../src/config/env.js');
-const db = require('../src/config/db.js');
-const routes = require('../src/routes/index.js');
-const { notFound } = require('../src/middlewares/notFound.js');
-const { errorHandler } = require('../src/middlewares/errorHandler.js');
-const { migrate } = require('../src/db/migrate.js');
-const userRepository = require('../src/repositories/userRepository.js');
-const { hashPassword } = require('../src/utils/password.js');
+const fromVercelModule = (value) => value?.default ?? value;
+const env = fromVercelModule(require('../src/config/env.js'));
+const db = fromVercelModule(require('../src/config/db.js'));
+const routes = fromVercelModule(require('../src/routes/index.js'));
+const notFoundModule = fromVercelModule(require('../src/middlewares/notFound.js'));
+const { notFound } = notFoundModule;
+const errorHandlerModule = fromVercelModule(require('../src/middlewares/errorHandler.js'));
+const { errorHandler } = errorHandlerModule;
+const migrateModule = fromVercelModule(require('../src/db/migrate.js'));
+const { migrate } = migrateModule;
+const userRepository = fromVercelModule(require('../src/repositories/userRepository.js'));
+const passwordModule = fromVercelModule(require('../src/utils/password.js'));
+const { hashPassword } = passwordModule;
 
 async function bootstrapInitialAdmin() {
   if (!process.env.VERCEL || env.NODE_ENV !== 'production') return;
