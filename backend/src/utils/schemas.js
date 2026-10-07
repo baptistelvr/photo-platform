@@ -1,41 +1,47 @@
 const { z } = require('zod');
+const { ALL_PERMISSIONS } = require('../constants/permissions');
+
+const id = z.number().int().positive();
+const password = z.string().min(8, 'Au moins 8 caractères').max(128);
+const trimmed = (max) => z.string().trim().max(max);
 
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
+  email: z.string().trim().email(),
+  password: z.string().min(1).max(128),
 });
 
 const changePasswordSchema = z.object({
-  currentPassword: z.string().min(8),
-  newPassword: z.string().min(8).max(128),
+  currentPassword: z.string().min(1).max(128),
+  newPassword: password,
 });
 
 const albumSchema = z.object({
-  name: z.string().min(1).max(120),
-  description: z.string().max(1000).optional().or(z.literal('')),
+  name: trimmed(120).min(1, 'Nom requis'),
+  description: trimmed(1000).optional().or(z.literal('')),
   visibility: z.enum(['public', 'protected']).default('public'),
-  password: z.string().min(8).max(128).optional(),
-  coverPhotoId: z.number().int().positive().optional(),
-  accessUserIds: z.array(z.number().int().positive()).optional(),
+  password: password.optional().or(z.literal('')),
+  removePassword: z.boolean().optional(),
+  coverPhotoId: id.nullable().optional(),
+  accessUserIds: z.array(id).optional(),
 });
 
 const photoMoveSchema = z.object({
-  photoId: z.number().int().positive(),
-  targetAlbumId: z.number().int().positive(),
+  photoId: id,
+  targetAlbumId: id,
 });
 
 const userSchema = z.object({
-  name: z.string().min(1).max(120),
-  email: z.string().email(),
+  name: trimmed(120).min(1, 'Nom requis'),
+  email: z.string().trim().email(),
   role: z.enum(['user', 'admin', 'main_admin']).default('user'),
   status: z.enum(['active', 'disabled']).default('active'),
-  password: z.string().min(8).max(128).optional(),
-  permissions: z.array(z.string()).optional(),
-  accessibleAlbumIds: z.array(z.number().int().positive()).optional(),
+  password: password.optional(),
+  permissions: z.array(z.enum(ALL_PERMISSIONS)).optional(),
+  accessibleAlbumIds: z.array(id).optional(),
 });
 
 const resetPasswordSchema = z.object({
-  password: z.string().min(8).max(128),
+  password,
 });
 
 module.exports = {

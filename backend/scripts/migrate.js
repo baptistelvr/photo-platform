@@ -1,11 +1,10 @@
-const unwrap = (value) => value?.default ?? value;
-const { migrate } = unwrap(require('../src/db/migrate'));
+const { migrate } = require('../src/db/migrate');
+const db = require('../src/config/db');
 
-migrate().then(() => {
-  console.log('Database schema is ready.');
-}).catch((error) => {
-  console.error('Database migration failed:', error.message);
-  process.exitCode = 1;
-});
-console.log('Migrations executed successfully.');
-
+migrate()
+  .then(() => console.log('Schéma de base de données à jour.'))
+  .catch((error) => {
+    console.error('Échec de la migration :', error.message);
+    process.exitCode = 1;
+  })
+  .finally(() => db.close());

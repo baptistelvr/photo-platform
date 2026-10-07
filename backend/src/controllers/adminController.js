@@ -1,9 +1,11 @@
-const unwrap = (value) => value?.default ?? value;
-const { listAuditLogs } = unwrap(require('../repositories/auditRepository'));
+const { listAuditLogs } = require('../repositories/auditRepository');
 
-async function getLogs(_req, res) {
-  res.json({ success: true, data: await listAuditLogs() });
+async function getLogs(_req, res, next) {
+  try {
+    res.json({ success: true, data: await listAuditLogs() });
+  } catch (error) {
+    next(error);
+  }
 }
 
 module.exports = { getLogs };
-

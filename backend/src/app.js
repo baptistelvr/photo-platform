@@ -1,125 +1,123 @@
-const unwrap = (value) => value?.default ?? value;
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
-const rateLimit = require('express-rate-limit');
 const session = require('express-session');
-const PostgreSQLStore = require('connect-pg-simple')(session);
-const env = unwrap(require('./config/env'));
-const db = unwrap(require('./config/db'));
-const routes = unwrap(require('./routes'));
-const { notFound } = unwrap(require('./middlewares/notFound'));
-const { errorHandler } = unwrap(require('./middlewares/errorHandler'));
-const { migrate } = unwrap(require('./db/migrate'));
-const userRepository = unwrap(require('./repositories/userRepository'));
-const { hashPassword } = unwrap(require('./utils/password'));
+const env = require('./config/env');
+const db = require('./config/db');
+const { migrate } = require('./db/migrate');
+const userRepository = require('./repositories/userRepository');
+const { hashPassword } = require('./utils/password');
+const { ConfigError, HttpError } = require('./utils/httpError');
+const { loadUser } = require('./middlewares/auth');
+const { sameOrigin } = require('./middlewares/sameOrigin');
+const { notFound } = require('./middlewares/notFound');
+const { errorHandler } = require('./middlewares/errorHandler');
+const routes = require('./routes');
 
+/**
+ * Creates the first main administrator from ADMIN_NAME / ADMIN_EMAIL /
+ * ADMIN_PASSWORD when the database has no user yet. Intended for the first
+ * production deployment; remove the variables afterwards.
+ */
 async function bootstrapInitialAdmin() {
-  if (!process.env.VERCEL || env.NODE_ENV !== 'production') return;
-
   const name = process.env.ADMIN_NAME;
   const email = process.env.ADMIN_EMAIL;
   const password = process.env.ADMIN_PASSWORD;
   if (!name && !email && !password) return;
   if (!name || !email || !password) {
-    throw new Error('Set ADMIN_NAME, ADMIN_EMAIL, and ADMIN_PASSWORD together for initial admin setup.');
+    throw new ConfigError('Définissez ADMIN_NAME, ADMIN_EMAIL et ADMIN_PASSWORD ensemble pour créer le premier administrateur.');
   }
   if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 12 || password.length > 128) {
-    throw new Error('Initial admin setup requires a valid email and a password between 12 and 128 characters.');
+    throw new ConfigError('ADMIN_EMAIL doit être valide et ADMIN_PASSWORD contenir entre 12 et 128 caractères.');
   }
-
+  if (await userRepository.countUsers() > 0) return;
   await userRepository.createInitialAdmin({ name, email, passwordHash: await hashPassword(password) });
 }
 
-
-async function initializeApp() {
-  if (!env.SESSION_SECRET && env.NODE_ENV !== 'test') throw new Error('SESSION_SECRET is required.');
-  db.assertProductionConfiguration();
+async function runInitialization() {
+  if (!env.SESSION_SECRET && env.NODE_ENV !== 'test') {
+    throw new ConfigError('SESSION_SECRET manquant : ajoutez une valeur aléatoire longue dans les variables d’environnement.');
+  }
+  db.assertConfigured();
   await migrate();
   await bootstrapInitialAdmin();
 }
 
-function buildApp({ initializeOnRequest = false } = {}) {
+// Runs once per process (i.e. once per cold start on Vercel); retried after a failure.
+let initialization;
+function initialize() {
+  initialization ||= runInitialization().catch((error) => {
+    initialization = undefined;
+    throw error;
+  });
+  return initialization;
+}
+
+function sessionStore() {
+  if (db.dialect !== 'postgres') return new session.MemoryStore();
+  const PostgresStore = require('connect-pg-simple')(session);
+  return new PostgresStore({
+    pool: db.pool,
+    tableName: 'sessions',
+    createTableIfMissing: false,
+    pruneSessionInterval: false,
+  });
+}
+
+function createApp() {
   const app = express();
   if (env.TRUST_PROXY) app.set('trust proxy', 1);
 
-  if (initializeOnRequest) {
-    let initializationPromise;
-    app.use((_req, _res, next) => {
-      initializationPromise ||= initializeApp().catch((error) => {
-        initializationPromise = undefined;
-        throw error;
-      });
-      initializationPromise.then(() => next(), next);
-    });
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
+  if (env.FRONTEND_URL) {
+    app.use(cors({ origin: env.FRONTEND_URL, credentials: true, methods: ['GET', 'POST', 'PUT', 'DELETE'] }));
   }
 
-  app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
-  app.use(cors({
-    origin(origin, callback) {
-      if (!origin || (env.FRONTEND_URL && origin === env.FRONTEND_URL)) return callback(null, true);
-      return callback(null, false);
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  }));
-  app.use(express.json({ limit: '1mb' }));
-  app.use(express.urlencoded({ extended: false, limit: '1mb' }));
-  app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 600, standardHeaders: true, legacyHeaders: false }));
+  // Answers before sessions are touched, and reports a readable reason when the
+  // deployment is misconfigured instead of crashing the function.
+  app.get('/api/health', async (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      await initialize();
+      res.json({ success: true, status: 'ok', database: db.dialect, storage: env.USE_BLOB_STORAGE ? 'vercel-blob' : 'local' });
+    } catch (error) {
+      const safe = error instanceof HttpError;
+      if (!safe) console.error('Initialization failed:', error); // eslint-disable-line no-console
+      res.status(503).json({
+        success: false,
+        status: 'error',
+        error: safe ? error.error : 'INITIALIZATION_FAILED',
+        message: safe ? error.message : 'Initialisation de la base de données impossible, consultez les logs du serveur.',
+      });
+    }
+  });
 
-  const sessionStore = db.dialect === 'postgres'
-    ? new PostgreSQLStore({ pool: db.pool, createTableIfMissing: true, tableName: 'sessions' })
-    : new session.MemoryStore();
+  app.use('/api', (_req, _res, next) => {
+    initialize().then(() => next(), next);
+  });
+
+  app.use(express.json({ limit: '100kb' }));
   app.use(session({
-    name: 'photo.sid', secret: env.SESSION_SECRET || 'test-secret', resave: false, saveUninitialized: false,
-    cookie: { httpOnly: true, sameSite: 'lax', secure: env.NODE_ENV === 'production', maxAge: 7 * 24 * 60 * 60 * 1000 },
-    store: sessionStore,
+    name: 'photo.sid',
+    secret: env.SESSION_SECRET || 'test-secret',
+    resave: false,
+    saveUninitialized: false,
+    rolling: true,
+    store: sessionStore(),
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: env.NODE_ENV === 'production',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    },
   }));
+  app.use(loadUser);
+  app.use(sameOrigin);
 
-  app.use(async (req, _res, next) => {
-    try {
-      if (!req.session?.userId) { req.user = null; return next(); }
-      const user = await userRepository.findById(req.session.userId);
-      if (!user || user.status !== 'active') { req.user = null; return next(); }
-      user.permissions = await userRepository.getPermissions(user.id);
-      req.user = user;
-      return next();
-    } catch (error) { return next(error); }
-  });
-
-  app.use((req, res, next) => {
-    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-    const origin = req.get('origin');
-    const referer = req.get('referer');
-    if (env.NODE_ENV === 'test' && !origin && !referer) return next();
-    let trusted = false;
-    try {
-      const expectedOrigin = `${req.protocol}://${req.get('host')}`;
-      trusted = (origin && new URL(origin).origin === expectedOrigin)
-        || (referer && new URL(referer).origin === expectedOrigin)
-        || (!!env.FRONTEND_URL && ((origin && origin === env.FRONTEND_URL) || (referer && referer.startsWith(env.FRONTEND_URL))));
-    } catch { trusted = false; }
-    if (!trusted) return res.status(403).json({ success: false, error: 'FORBIDDEN', message: 'Origine non autorisée' });
-    return next();
-  });
-
-  app.get('/api/health', (_req, res) => res.json({ success: true, status: 'ok' }));
   app.use('/api', routes);
   app.use(notFound);
   app.use(errorHandler);
   return app;
 }
 
-async function createApp() {
-  await initializeApp();
-  return buildApp();
-}
-
-const app = buildApp({ initializeOnRequest: true });
-app.createApp = createApp;
-app.createVercelApp = () => app;
-
-// Export the Express application itself. Vercel's Express adapter expects the
-// default/CommonJS export to be the app instance, not a module of factories.
-module.exports = app;
-
+module.exports = { createApp, initialize };
