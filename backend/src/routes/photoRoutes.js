@@ -22,7 +22,7 @@ const routeChecks = {
 };
 for (const [name, handler] of Object.entries(routeChecks)) {
   if (typeof handler !== 'function') {
-    throw new TypeError(`Photo route handler ${name} is ${typeof handler}`);
+    throw new TypeError(`Photo route handler ${name} is ${typeof handler}; controller exports: ${Object.keys(albumController || {}).join(',')}`);
   }
 }
 const photoLimiter = rateLimit({
