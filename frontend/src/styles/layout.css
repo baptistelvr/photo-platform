@@ -2,6 +2,8 @@
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
+  /* Full-bleed sections use 100vw; clip (unlike hidden) keeps the sticky header working. */
+  overflow-x: clip;
 }
 
 .container {

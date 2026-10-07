@@ -44,6 +44,7 @@ router.post(
 
 // Photos
 router.post('/photos/move', requirePermission(PERMISSIONS.MOVE_PHOTOS), photoController.movePhoto);
+router.get('/photos/showcase', photoController.showcase);
 router.get('/photos/:id', photoController.getPhoto);
 router.get('/photos/:id/thumbnail', photoController.streamThumbnail);
 router.get('/photos/:id/file', photoController.streamOriginal);
