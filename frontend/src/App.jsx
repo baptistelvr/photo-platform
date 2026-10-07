@@ -1,63 +1,48 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Layout } from './components/Layout';
+import { PageLoader } from './components/ui';
 import { useAuth } from './hooks/useAuth';
-import { AdminLogsPage } from './pages/AdminLogsPage';
-import { CollectionDetailPage } from './pages/CollectionDetailPage';
+import { AlbumPage } from './pages/AlbumPage';
 import { CollectionsPage } from './pages/CollectionsPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
-import { ManageAlbumsPage } from './pages/ManageAlbumsPage';
-import { ManageUsersPage } from './pages/ManageUsersPage';
-import { UploadPage } from './pages/UploadPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 
-function ProtectedRoute({ children, permission }) {
-  const { loading, isAuthenticated, hasPermission } = useAuth();
-  if (loading) return <p>Chargement…</p>;
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (permission && !hasPermission(permission)) return <Navigate to="/collections" replace />;
-  return children;
+// Pages only some users need are split into their own chunks.
+const named = (loader, name) => lazy(() => loader().then((module) => ({ default: module[name] })));
+const UploadPage = named(() => import('./pages/UploadPage'), 'UploadPage');
+const AccountPage = named(() => import('./pages/AccountPage'), 'AccountPage');
+const ManageAlbumsPage = named(() => import('./pages/ManageAlbumsPage'), 'ManageAlbumsPage');
+const ManageUsersPage = named(() => import('./pages/ManageUsersPage'), 'ManageUsersPage');
+const AdminLogsPage = named(() => import('./pages/AdminLogsPage'), 'AdminLogsPage');
+
+function Protected({ children, anyOf }) {
+  const { loading, isAuthenticated, hasAnyPermission } = useAuth();
+  const location = useLocation();
+  if (loading) return <PageLoader />;
+  if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />;
+  if (anyOf && !hasAnyPermission(anyOf)) return <Navigate to="/collections" replace />;
+  return <Suspense fallback={<PageLoader />}>{children}</Suspense>;
 }
 
 export default function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/collections" element={<CollectionsPage />} />
-        <Route path="/collections/:id" element={<CollectionDetailPage />} />
-        <Route path="/login" element={<LoginPage />} />
+        <Route index element={<HomePage />} />
+        <Route path="collections" element={<CollectionsPage />} />
+        <Route path="collections/:id" element={<AlbumPage />} />
+        <Route path="login" element={<LoginPage />} />
+        <Route path="account" element={<Protected><AccountPage /></Protected>} />
+        <Route path="upload" element={<Protected anyOf={['UPLOAD_PHOTOS']}><UploadPage /></Protected>} />
         <Route
-          path="/upload"
-          element={
-            <ProtectedRoute permission="UPLOAD_PHOTOS">
-              <UploadPage />
-            </ProtectedRoute>
-          }
+          path="manage/albums"
+          element={<Protected anyOf={['CREATE_ALBUMS', 'EDIT_ALBUMS', 'DELETE_ALBUMS']}><ManageAlbumsPage /></Protected>}
         />
-        <Route
-          path="/manage/albums"
-          element={
-            <ProtectedRoute permission="EDIT_ALBUMS">
-              <ManageAlbumsPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/manage/users"
-          element={
-            <ProtectedRoute permission="MANAGE_USERS">
-              <ManageUsersPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/logs"
-          element={
-            <ProtectedRoute permission="MANAGE_PERMISSIONS">
-              <AdminLogsPage />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="manage/users" element={<Protected anyOf={['MANAGE_USERS']}><ManageUsersPage /></Protected>} />
+        <Route path="admin/logs" element={<Protected anyOf={['MANAGE_PERMISSIONS']}><AdminLogsPage /></Protected>} />
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   );

@@ -14,6 +14,8 @@ const { notFound } = require('./middlewares/notFound');
 const { errorHandler } = require('./middlewares/errorHandler');
 const routes = require('./routes');
 
+const SESSION_REFRESH_MS = 12 * 60 * 60 * 1000;
+
 /**
  * Creates the first main administrator from ADMIN_NAME / ADMIN_EMAIL /
  * ADMIN_PASSWORD when the database has no user yet. Intended for the first
@@ -61,6 +63,8 @@ function sessionStore() {
     tableName: 'sessions',
     createTableIfMissing: false,
     pruneSessionInterval: false,
+    // Without this every request (each thumbnail!) would issue an UPDATE and wait for it.
+    disableTouch: true,
   });
 }
 
@@ -102,7 +106,6 @@ function createApp() {
     secret: env.SESSION_SECRET || 'test-secret',
     resave: false,
     saveUninitialized: false,
-    rolling: true,
     store: sessionStore(),
     cookie: {
       httpOnly: true,
@@ -111,6 +114,13 @@ function createApp() {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
   }));
+  // Sliding expiry: re-save the session at most twice a day instead of on every request.
+  app.use((req, _res, next) => {
+    if (req.session?.userId && Date.now() - (req.session.refreshedAt || 0) > SESSION_REFRESH_MS) {
+      req.session.refreshedAt = Date.now();
+    }
+    next();
+  });
   app.use(loadUser);
   app.use(sameOrigin);
 

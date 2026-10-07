@@ -14,8 +14,8 @@ function originOf(value) {
  * CSRF protection for cookie-authenticated requests: state-changing requests
  * must come from the site itself (or the configured FRONTEND_URL).
  *
- * `req.host` honours X-Forwarded-Host behind a trusted proxy, which matters on
- * Vercel where the request reaches the function through the platform router.
+ * `req.host` honours X-Forwarded-Host behind a trusted proxy (Vercel's router);
+ * the raw Host header is accepted too. Neither can be set by a cross-site page.
  */
 function sameOrigin(req, res, next) {
   if (SAFE_METHODS.has(req.method)) return next();
@@ -23,7 +23,7 @@ function sameOrigin(req, res, next) {
   const source = originOf(req.get('origin')) || originOf(req.get('referer'));
   if (!source && env.NODE_ENV === 'test') return next();
 
-  const allowed = new Set([`${req.protocol}://${req.host}`]);
+  const allowed = new Set([`${req.protocol}://${req.host}`, `${req.protocol}://${req.get('host')}`]);
   if (env.FRONTEND_URL) allowed.add(originOf(env.FRONTEND_URL));
 
   if (source && allowed.has(source)) return next();

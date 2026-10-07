@@ -79,8 +79,9 @@ function streamVariant(variant) {
       const stream = await storageService.readPhoto(variant === 'thumbnail' ? photo.thumbnailPath : photo.originalPath);
       if (!stream) throw new HttpError(404, 'NOT_FOUND', 'Fichier photo introuvable');
 
-      // A photo id always maps to the same pixels, so browsers may keep it for a while.
-      res.type('image/jpeg').set('Cache-Control', 'private, max-age=86400');
+      // A photo id always maps to the same pixels; a short private cache keeps galleries snappy
+      // without letting revoked access linger for long.
+      res.type('image/jpeg').set('Cache-Control', 'private, max-age=3600');
       if (variant === 'file' && req.query.download === '1') {
         res.attachment(photo.originalName || `photo-${photo.id}.jpg`);
       }
