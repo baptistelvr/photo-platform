@@ -821,3 +821,138 @@
   line-height: 1;
   color: var(--border-strong);
 }
+
+/* ---------- Folder import ---------- */
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.upload-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 32px;
+}
+
+.upload-options .checkbox {
+  max-width: 560px;
+}
+
+.batch {
+  overflow: hidden;
+}
+
+.batch-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.batch-header .drop-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--surface-muted);
+  color: var(--text-soft);
+  flex-shrink: 0;
+}
+
+.batch-header .drop-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.batch-header p {
+  margin-top: 2px;
+  font-size: 14px;
+}
+
+.batch-list .data-row {
+  grid-template-columns: auto minmax(0, 1fr) 170px 28px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.batch-list .data-row > input[type='checkbox'] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--primary);
+}
+
+.batch-list .data-row.excluded .cell-main,
+.batch-list .data-row.excluded .batch-progress {
+  opacity: 0.45;
+}
+
+.batch-list .folder-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.batch-list .cell-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.error-text {
+  color: var(--danger);
+}
+
+.batch-progress {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-progress .progress {
+  margin-top: 0;
+}
+
+.batch-status {
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+.batch-status svg {
+  width: 20px;
+  height: 20px;
+}
+
+.batch-status.done {
+  color: var(--success);
+}
+
+.batch-status.error {
+  color: var(--danger);
+}
+
+@media (max-width: 640px) {
+  .batch-list .data-row {
+    grid-template-columns: auto minmax(0, 1fr) 24px;
+  }
+
+  .batch-list .batch-progress {
+    grid-column: 2 / -1;
+  }
+}
