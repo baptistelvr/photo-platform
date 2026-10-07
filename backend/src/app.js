@@ -114,8 +114,10 @@ async function createApp() {
   return buildApp();
 }
 
-function createVercelApp() {
-  return buildApp({ initializeOnRequest: true });
-}
+const app = buildApp({ initializeOnRequest: true });
+app.createApp = createApp;
+app.createVercelApp = () => app;
 
-module.exports = { createApp, createVercelApp };
+// Export the Express application itself. Vercel's Express adapter expects the
+// default/CommonJS export to be the app instance, not a module of factories.
+module.exports = app;
