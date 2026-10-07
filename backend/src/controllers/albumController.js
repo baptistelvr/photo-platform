@@ -303,7 +303,8 @@ async function movePhoto(req, res, next) {
   }
 }
 
-module.exports = {
+const albumController = function albumController() {};
+Object.assign(albumController, {
   upload,
   listAlbums,
   createAlbum,
@@ -316,8 +317,6 @@ module.exports = {
   streamPhoto,
   deletePhoto,
   movePhoto,
-};
-
-// Keep this handler visible to Vercel's CommonJS-to-ESM function bundler.
-module.exports.movePhoto = movePhoto;
+});
+module.exports = albumController;
 
