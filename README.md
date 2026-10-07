@@ -163,7 +163,7 @@ Le dossier local `backend/Pictures` et SQLite restent disponibles pour le dével
 2. Relier une base Neon au projet afin que `DATABASE_URL` soit fourni aux environnements de déploiement.
 3. Créer un magasin Vercel Blob **privé** et le relier au projet. Vercel fournit alors l’accès au magasin aux fonctions.
 4. Définir `SESSION_SECRET` dans les environnements Production, Preview et Development avec une valeur aléatoire longue. Garder les secrets dans Vercel, jamais dans Git.
-5. Créer le premier administrateur depuis un environnement local sécurisé relié à la base Neon avec `npm run init:admin` dans `backend`. Les variables `ADMIN_NAME`, `ADMIN_EMAIL` et `ADMIN_PASSWORD` peuvent être fournies à la commande; elles ne doivent pas être commitées.
-6. Déployer. Les tables applicatives sont créées automatiquement par l’API. Vérifier `GET /api/health`, puis se connecter et téléverser une image JPEG de test.
+5. Pour créer le premier administrateur en production sans télécharger les secrets Neon localement, ajouter ensemble `ADMIN_NAME`, `ADMIN_EMAIL` et `ADMIN_PASSWORD` comme variables **Secret** de l’environnement Production. Utiliser un mot de passe d’au moins 12 caractères, puis redéployer.
+6. Après le redéploiement, appeler une fois `GET /api/health`. Au démarrage de l’API, si la base ne contient encore aucun utilisateur, elle crée atomiquement le compte `main_admin` à partir de ces variables. Retirer ensuite immédiatement les trois variables temporaires de Vercel et redéployer ; le compte reste enregistré dans Neon. Se connecter puis téléverser une petite image JPEG de test.
 
 `FRONTEND_URL` n’est nécessaire que si le frontend et l’API sont servis depuis des origines différentes. Cette configuration Vercel les sert sur la même origine et utilise les cookies de session `HttpOnly`, `SameSite=Lax` et `Secure` en production.

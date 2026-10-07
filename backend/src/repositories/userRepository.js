@@ -1,4 +1,5 @@
-const { query } = require('../config/db');
+const db = require('../config/db');
+const { query } = db;
 const baseSelect = `SELECT u.id, u.name, u.email, u.role, u.status, u.last_login as "lastLogin",
   u.created_at as "createdAt", u.updated_at as "updatedAt" FROM users u`;
 
@@ -22,6 +23,30 @@ async function createUser({ name, email, passwordHash, role = 'user', status = '
   const { rows } = await query(`INSERT INTO users (name,email,password_hash,role,status) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
     [name, email.toLowerCase(), passwordHash, role, status]);
   return findById(rows[0].id);
+}
+async function createInitialAdmin({ name, email, passwordHash }) {
+  if (!db.pool) throw new Error('Initial administrator setup requires the production Postgres database.');
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock($1)', [735194201]);
+    const { rows } = await client.query('SELECT COUNT(*)::int AS count FROM users');
+    if (rows[0].count > 0) {
+      await client.query('COMMIT');
+      return false;
+    }
+    await client.query(
+      'INSERT INTO users (name,email,password_hash,role,status) VALUES ($1,$2,$3,$4,$5)',
+      [name.trim(), email.trim().toLowerCase(), passwordHash, 'main_admin', 'active'],
+    );
+    await client.query('COMMIT');
+    return true;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 async function updateUser(id, fields) {
   const columns = { name: 'name', email: 'email', role: 'role', status: 'status' };
@@ -58,4 +83,4 @@ async function listPermissions() {
 }
 
 module.exports = { findByEmail, findById, findAuthById, listUsers, createUser, updateUser,
-  updatePassword, deleteUser, setLastLogin, getPermissions, setPermissions, listPermissions };
+  createInitialAdmin, updatePassword, deleteUser, setLastLogin, getPermissions, setPermissions, listPermissions };

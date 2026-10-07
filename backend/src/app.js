@@ -11,12 +11,31 @@ const { notFound } = require('./middlewares/notFound');
 const { errorHandler } = require('./middlewares/errorHandler');
 const { migrate } = require('./db/migrate');
 const userRepository = require('./repositories/userRepository');
+const { hashPassword } = require('./utils/password');
+
+async function bootstrapInitialAdmin() {
+  if (!process.env.VERCEL || env.NODE_ENV !== 'production') return;
+
+  const name = process.env.ADMIN_NAME;
+  const email = process.env.ADMIN_EMAIL;
+  const password = process.env.ADMIN_PASSWORD;
+  if (!name && !email && !password) return;
+  if (!name || !email || !password) {
+    throw new Error('Set ADMIN_NAME, ADMIN_EMAIL, and ADMIN_PASSWORD together for initial admin setup.');
+  }
+  if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 12 || password.length > 128) {
+    throw new Error('Initial admin setup requires a valid email and a password between 12 and 128 characters.');
+  }
+
+  await userRepository.createInitialAdmin({ name, email, passwordHash: await hashPassword(password) });
+}
 
 
 async function createApp() {
   if (!env.SESSION_SECRET && env.NODE_ENV !== 'test') throw new Error('SESSION_SECRET is required.');
   db.assertProductionConfiguration();
   await migrate();
+  await bootstrapInitialAdmin();
   const app = express();
   if (env.TRUST_PROXY) app.set('trust proxy', 1);
 
