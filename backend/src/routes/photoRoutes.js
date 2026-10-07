@@ -13,6 +13,18 @@ const storageService = unwrap(require('../services/storageService'));
 const { hasPermission } = unwrap(require('../services/accessService'));
 
 const router = Router();
+const routeChecks = {
+  getPhoto: albumController.getPhoto,
+  streamPhoto: albumController.streamPhoto,
+  deletePhoto: albumController.deletePhoto,
+  requireAuth,
+  deletePermission: requirePermission(PERMISSIONS.DELETE_PHOTOS),
+};
+for (const [name, handler] of Object.entries(routeChecks)) {
+  if (typeof handler !== 'function') {
+    throw new TypeError(`Photo route handler ${name} is ${typeof handler}`);
+  }
+}
 const photoLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
