@@ -4,14 +4,14 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const session = require('express-session');
 const PostgreSQLStore = require('connect-pg-simple')(session);
-const env = require('../src/config/env');
-const db = require('../src/config/db');
-const routes = require('../src/routes');
-const { notFound } = require('../src/middlewares/notFound');
-const { errorHandler } = require('../src/middlewares/errorHandler');
-const { migrate } = require('../src/db/migrate');
-const userRepository = require('../src/repositories/userRepository');
-const { hashPassword } = require('../src/utils/password');
+const env = require('../src/config/env.js');
+const db = require('../src/config/db.js');
+const routes = require('../src/routes/index.js');
+const { notFound } = require('../src/middlewares/notFound.js');
+const { errorHandler } = require('../src/middlewares/errorHandler.js');
+const { migrate } = require('../src/db/migrate.js');
+const userRepository = require('../src/repositories/userRepository.js');
+const { hashPassword } = require('../src/utils/password.js');
 
 async function bootstrapInitialAdmin() {
   if (!process.env.VERCEL || env.NODE_ENV !== 'production') return;
