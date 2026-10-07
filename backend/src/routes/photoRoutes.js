@@ -2,7 +2,7 @@ const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 &
 const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
 const albumController = unwrap(require('../controllers/albumController'));
-const movePhotoHandler = unwrap(albumController.movePhoto);
+const movePhotoHandler = unwrap(require('../controllers/movePhotoController.js'));
 const { requireAuth, requirePermission } = unwrap(require('../middlewares/auth'));
 const { PERMISSIONS } = unwrap(require('../constants/permissions'));
 
