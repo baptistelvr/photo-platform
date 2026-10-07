@@ -1,4 +1,5 @@
-const { query } = require('../config/db');
+const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
+const { query } = unwrap(require('../config/db'));
 
 async function listAlbums() {
   const { rows } = await query(`SELECT a.id, a.name, a.description, a.cover_photo_id as "coverPhotoId", a.visibility,
@@ -57,3 +58,4 @@ async function userHasAlbumAccess(albumId, userId) {
 
 module.exports = { listAlbums, getAlbumById, createAlbum, updateAlbum, deleteAlbum, listAlbumPhotos,
   getAlbumAccessUserIds, setAlbumAccess, userHasAlbumAccess };
+

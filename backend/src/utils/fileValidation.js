@@ -1,7 +1,8 @@
+const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
 const path = require('node:path');
 const { fileTypeFromBuffer } = require('file-type');
-const env = require('../config/env');
-const { HttpError } = require('./httpError');
+const env = unwrap(require('../config/env'));
+const { HttpError } = unwrap(require('./httpError'));
 
 const allowedMimeTypes = new Set(['image/jpeg']);
 const allowedExtensions = new Set(['.jpg', '.jpeg']);
@@ -31,3 +32,4 @@ async function validateJpegUpload(file) {
 }
 
 module.exports = { validateJpegUpload };
+

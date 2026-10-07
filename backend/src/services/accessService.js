@@ -1,4 +1,5 @@
-const albumRepository = require('../repositories/albumRepository');
+const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
+const albumRepository = unwrap(require('../repositories/albumRepository'));
 
 function isMainAdmin(user) {
   return user?.role === 'main_admin';
@@ -20,3 +21,4 @@ async function canAccessAlbum(user, album) {
 }
 
 module.exports = { isMainAdmin, hasPermission, canAccessAlbum };
+

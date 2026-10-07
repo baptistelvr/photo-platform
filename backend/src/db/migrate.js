@@ -1,5 +1,6 @@
-const { query, dialect } = require('../config/db');
-const { ALL_PERMISSIONS } = require('../constants/permissions');
+const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
+const { query, dialect } = unwrap(require('../config/db'));
+const { ALL_PERMISSIONS } = unwrap(require('../constants/permissions'));
 
 async function migrate() {
   const id = dialect === 'postgres' ? 'SERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
@@ -45,3 +46,4 @@ async function migrate() {
 }
 
 module.exports = { migrate };
+

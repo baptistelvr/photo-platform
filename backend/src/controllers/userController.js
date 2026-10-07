@@ -1,9 +1,10 @@
-const userRepository = require('../repositories/userRepository');
-const albumRepository = require('../repositories/albumRepository');
-const { userSchema, resetPasswordSchema } = require('../utils/schemas');
-const { hashPassword } = require('../utils/password');
-const { HttpError } = require('../utils/httpError');
-const { addAuditLog } = require('../repositories/auditRepository');
+const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
+const userRepository = unwrap(require('../repositories/userRepository'));
+const albumRepository = unwrap(require('../repositories/albumRepository'));
+const { userSchema, resetPasswordSchema } = unwrap(require('../utils/schemas'));
+const { hashPassword } = unwrap(require('../utils/password'));
+const { HttpError } = unwrap(require('../utils/httpError'));
+const { addAuditLog } = unwrap(require('../repositories/auditRepository'));
 
 async function listUsers(_req, res) {
   const users = await userRepository.listUsers();
@@ -80,3 +81,4 @@ async function listPermissions(_req, res) {
 }
 
 module.exports = { listUsers, createUser, updateUser, deleteUser, resetPassword, listPermissions };
+

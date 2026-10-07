@@ -1,5 +1,6 @@
+const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
 const path = require('node:path');
-const env = require('./env');
+const env = unwrap(require('./env'));
 
 const isPostgres = /^postgres(?:ql)?:\/\//i.test(env.DATABASE_URL);
 let sqlite;
@@ -49,3 +50,4 @@ async function close() {
 }
 
 module.exports = { query, close, assertProductionConfiguration, dialect: isPostgres ? 'postgres' : 'sqlite', pool };
+

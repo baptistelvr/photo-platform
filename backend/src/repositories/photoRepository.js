@@ -1,4 +1,5 @@
-const { query } = require('../config/db');
+const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
+const { query } = unwrap(require('../config/db'));
 
 async function createPhoto(payload) {
   const { rows } = await query(`INSERT INTO photos (album_id,filename,original_name,original_path,thumbnail_path,
@@ -22,3 +23,4 @@ async function movePhoto(photoId, targetAlbumId, paths) {
 }
 
 module.exports = { createPhoto, getPhotoById, deletePhoto, movePhoto };
+

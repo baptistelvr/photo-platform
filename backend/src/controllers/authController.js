@@ -1,9 +1,10 @@
+const unwrap = (value) => { let current = value; for (let depth = 0; depth < 4 && current && current.default; depth += 1) current = current.default; return current; };
 const rateLimit = require('express-rate-limit');
-const userRepository = require('../repositories/userRepository');
-const { verifyPassword, hashPassword } = require('../utils/password');
-const { loginSchema, changePasswordSchema } = require('../utils/schemas');
-const { HttpError } = require('../utils/httpError');
-const { addAuditLog } = require('../repositories/auditRepository');
+const userRepository = unwrap(require('../repositories/userRepository'));
+const { verifyPassword, hashPassword } = unwrap(require('../utils/password'));
+const { loginSchema, changePasswordSchema } = unwrap(require('../utils/schemas'));
+const { HttpError } = unwrap(require('../utils/httpError'));
+const { addAuditLog } = unwrap(require('../repositories/auditRepository'));
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -90,3 +91,4 @@ module.exports = {
   changePassword,
   loginLimiter,
 };
+
