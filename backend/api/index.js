@@ -5,15 +5,23 @@ const rateLimit = require('express-rate-limit');
 const session = require('express-session');
 const PostgreSQLStore = require('connect-pg-simple')(session);
 const fromVercelModule = (value) => value?.default ?? value;
+const unwrapRouteModule = (value) => {
+  let current = value;
+  for (let depth = 0; depth < 4 && current?.default; depth += 1) current = current.default;
+  return current;
+};
 const env = fromVercelModule(require('../src/config/env.js'));
 const db = fromVercelModule(require('../src/config/db.js'));
 const routes = express.Router();
-routes.use('/auth', fromVercelModule(require('../src/routes/authRoutes.js')));
-routes.use('/albums', fromVercelModule(require('../src/routes/albumRoutes.js')));
-routes.use('/photos', fromVercelModule(require('../src/routes/photoRoutes.js')));
-routes.use('/users', fromVercelModule(require('../src/routes/userRoutes.js')));
-routes.use('/admin', fromVercelModule(require('../src/routes/adminRoutes.js')));
-routes.use('/permissions', fromVercelModule(require('../src/routes/permissionRoutes.js')));
+const routeModules = [
+  ['/auth', require('../src/routes/authRoutes.js')],
+  ['/albums', require('../src/routes/albumRoutes.js')],
+  ['/photos', require('../src/routes/photoRoutes.js')],
+  ['/users', require('../src/routes/userRoutes.js')],
+  ['/admin', require('../src/routes/adminRoutes.js')],
+  ['/permissions', require('../src/routes/permissionRoutes.js')],
+];
+for (const [prefix, routeModule] of routeModules) routes.use(prefix, unwrapRouteModule(routeModule));
 const notFoundModule = fromVercelModule(require('../src/middlewares/notFound.js'));
 const { notFound } = notFoundModule;
 const errorHandlerModule = fromVercelModule(require('../src/middlewares/errorHandler.js'));
