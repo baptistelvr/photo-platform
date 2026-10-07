@@ -10,13 +10,15 @@ const adminController = require('../controllers/adminController');
 
 const router = Router();
 
-// Image requests are excluded: a single gallery page loads dozens of thumbnails.
+// Anonymous traffic only. Image requests are excluded (a gallery loads dozens of
+// thumbnails) and so are signed-in accounts, whose folder imports send one request
+// per photo. Login attempts keep their own, stricter limiter.
 router.use(rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 1000,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  skip: (req) => req.method === 'GET' && /^\/photos\/\d+\/(thumbnail|file)$/.test(req.path),
+  skip: (req) => Boolean(req.user) || (req.method === 'GET' && /^\/photos\/\d+\/(thumbnail|file)$/.test(req.path)),
   message: { success: false, error: 'TOO_MANY_REQUESTS', message: 'Trop de requêtes, réessayez dans quelques minutes' },
 }));
 

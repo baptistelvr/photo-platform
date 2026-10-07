@@ -55,12 +55,18 @@ Sur Vercel, chaque requête `/api/*` plantait (`FUNCTION_INVOCATION_FAILED`, pui
 
 `file-type` a été remplacé par une vérification de la signature JPEG suivie d'un décodage complet par `sharp`. Règle à retenir pour la suite : **n'ajoutez pas au backend de dépendance qui ne fournit qu'un point d'entrée ESM** (vérifiez le champ `exports` de son `package.json`), ou convertissez d'abord le backend en ESM.
 
+## Importer tout un dossier
+
+Sur la page **Importer**, glissez un dossier (ou cliquez sur « choisissez un dossier »). Chaque sous-dossier devient une collection : l'album est créé s'il n'existe pas, et réutilisé s'il existe déjà (même nom, majuscules et accents compris). Les sous-dossiers plus profonds sont rangés dans leur collection, les fichiers qui ne sont pas des JPEG et les fichiers cachés (`.DS_Store`, `._*`) sont ignorés.
+
+Les photos de plus de 1 Mo sont réduites dans le navigateur avant l'envoi (2560 px maximum, orientation corrigée). Vos fichiers d'origine ne sont pas modifiés. L'envoi se fait trois photos à la fois, avec nouvel essai automatique en cas de coupure ; si l'import est interrompu, il suffit de glisser à nouveau le même dossier : les photos déjà présentes dans l'album (même nom de fichier) sont sautées. Laissez l'onglet ouvert pendant l'envoi.
+
 ## Règles côté stockage
 
 - JPEG uniquement, 1 Mo maximum par fichier. Le contrôle porte sur l'extension, le type MIME, la signature binaire, puis un décodage complet.
 - Les images sont réencodées (orientation EXIF appliquée) et une miniature de 640 px est générée.
 - Chemins de stockage : `Pictures/<nom de l'album>/original/<fichier>.jpg` et `.../thumbnails/...`. Renommer un album déplace donc ses fichiers.
-- Le frontend envoie les photos une par une, ce qui reste bien en dessous de la limite de 4,5 Mo par requête des fonctions Vercel.
+- Le frontend envoie une photo par requête, ce qui reste bien en dessous de la limite de 4,5 Mo par requête des fonctions Vercel.
 
 ## Permissions
 
