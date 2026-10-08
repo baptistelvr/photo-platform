@@ -1,4 +1,4 @@
-import { ImageOff, Lock } from 'lucide-react';
+import { ImageOff, Library, Lock } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { thumbnailUrl } from '../lib/api';
@@ -27,7 +27,7 @@ export function CoverImage({ photoId, alt = '', className }) {
 
 export function AlbumCard({ album }) {
   return (
-    <Link to={`/collections/${album.id}`} className="album-card">
+    <Link to={`/albums/${album.id}`} className="album-card">
       <div className="album-cover">
         <CoverImage photoId={album.coverPhotoId} />
         {album.visibility === 'protected' && (
@@ -41,6 +41,34 @@ export function AlbumCard({ album }) {
         <p>{pluralize(album.photosCount, 'photo')}</p>
       </div>
     </Link>
+  );
+}
+
+/** A collection shown as a small stack of prints, to tell it apart from an album. */
+export function CollectionCard({ collection }) {
+  return (
+    <Link to={`/collections/${collection.id}`} className="album-card collection-card">
+      <div className="album-cover">
+        <CoverImage photoId={collection.coverPhotoId} />
+        <span className="cover-badge">
+          <Library aria-hidden="true" /> {pluralize(collection.albumsCount, 'album')}
+        </span>
+      </div>
+      <div className="album-meta">
+        <h3 className="truncate">{collection.name}</h3>
+        <p>{pluralize(collection.photosCount, 'photo')}</p>
+      </div>
+    </Link>
+  );
+}
+
+export function CollectionGrid({ collections, loading, skeletons = 6 }) {
+  return (
+    <div className="album-grid">
+      {loading && !collections
+        ? Array.from({ length: skeletons }, (_, i) => <AlbumCardSkeleton key={i} />)
+        : collections.map((collection) => <CollectionCard key={collection.id} collection={collection} />)}
+    </div>
   );
 }
 

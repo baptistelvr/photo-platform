@@ -23,6 +23,10 @@ export const ACTION_LABELS = {
   AUTH_LOGIN: { label: 'Connexion', color: '#3b82f6' },
   AUTH_LOGOUT: { label: 'Déconnexion', color: '#94a3b8' },
   AUTH_CHANGE_PASSWORD: { label: 'Mot de passe modifié', color: '#a855f7' },
+  COLLECTION_CREATE: { label: 'Collection créée', color: '#10b981' },
+  COLLECTION_UPDATE: { label: 'Collection modifiée', color: '#f59e0b' },
+  COLLECTION_DELETE: { label: 'Collection supprimée', color: '#ef4444' },
+  STORAGE_PRUNE: { label: 'Stockage nettoyé', color: '#64748b' },
   ALBUM_CREATE: { label: 'Album créé', color: '#10b981' },
   ALBUM_UPDATE: { label: 'Album modifié', color: '#f59e0b' },
   ALBUM_DELETE: { label: 'Album supprimé', color: '#ef4444' },
@@ -35,4 +39,4 @@ export const ACTION_LABELS = {
   USER_RESET_PASSWORD: { label: 'Mot de passe réinitialisé', color: '#a855f7' },
 };
 
-export const OBJECT_LABELS = { album: 'Album', photo: 'Photo', user: 'Utilisateur' };
+export const OBJECT_LABELS = { collection: 'Collection', album: 'Album', photo: 'Photo', user: 'Utilisateur', storage: 'Stockage' };

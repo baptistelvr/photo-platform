@@ -20,6 +20,10 @@ function schemaStatements(dialect) {
       permission_id INTEGER NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
       PRIMARY KEY (user_id, permission_id)
     )`,
+    `CREATE TABLE IF NOT EXISTS collections (
+      id ${id}, name TEXT NOT NULL, description TEXT,
+      created_at TEXT NOT NULL DEFAULT ${now}, updated_at TEXT NOT NULL DEFAULT ${now}
+    )`,
     `CREATE TABLE IF NOT EXISTS albums (
       id ${id}, name TEXT NOT NULL, description TEXT, cover_photo_id INTEGER,
       visibility TEXT NOT NULL DEFAULT 'public', password_hash TEXT,
@@ -63,11 +67,24 @@ function schemaStatements(dialect) {
   return statements;
 }
 
+/** Columns added after the first release. SQLite has no ADD COLUMN IF NOT EXISTS. */
+async function addMissingColumns(query) {
+  const column = 'collection_id INTEGER REFERENCES collections(id) ON DELETE SET NULL';
+  if (db.dialect === 'postgres') {
+    await query(`ALTER TABLE albums ADD COLUMN IF NOT EXISTS ${column}`);
+  } else {
+    const { rows } = await query('PRAGMA table_info(albums)');
+    if (!rows.some((row) => row.name === 'collection_id')) await query(`ALTER TABLE albums ADD COLUMN ${column}`);
+  }
+  await query('CREATE INDEX IF NOT EXISTS idx_albums_collection ON albums (collection_id)');
+}
+
 async function migrate() {
   await db.transaction(async (query) => {
     for (const statement of schemaStatements(db.dialect)) {
       await query(statement);
     }
+    await addMissingColumns(query);
     for (const code of ALL_PERMISSIONS) {
       await query(
         'INSERT INTO permissions (code, description) VALUES ($1, $2) ON CONFLICT (code) DO UPDATE SET description = excluded.description',

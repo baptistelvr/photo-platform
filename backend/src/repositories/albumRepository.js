@@ -1,13 +1,15 @@
 const { query } = require('../config/db');
 
 const albumColumns = `a.id, a.name, a.description, a.cover_photo_id AS "coverPhotoId", a.visibility,
-  a.password_hash AS "passwordHash", a.created_at AS "createdAt", a.updated_at AS "updatedAt"`;
+  a.password_hash AS "passwordHash", a.created_at AS "createdAt", a.updated_at AS "updatedAt",
+  a.collection_id AS "collectionId", c.name AS "collectionName"`;
 
 async function listAlbums() {
   const { rows } = await query(`SELECT ${albumColumns},
       CAST((SELECT COUNT(*) FROM photos p WHERE p.album_id = a.id) AS INTEGER) AS "photosCount",
       (SELECT p.id FROM photos p WHERE p.album_id = a.id ORDER BY p.created_at DESC, p.id DESC LIMIT 1) AS "latestPhotoId"
-    FROM albums a ORDER BY a.created_at DESC, a.id DESC`);
+    FROM albums a LEFT JOIN collections c ON c.id = a.collection_id
+    ORDER BY a.created_at DESC, a.id DESC`);
   return rows;
 }
 
@@ -15,21 +17,27 @@ async function getAlbumById(id) {
   const { rows } = await query(`SELECT ${albumColumns},
       CAST((SELECT COUNT(*) FROM photos p WHERE p.album_id = a.id) AS INTEGER) AS "photosCount",
       (SELECT p.id FROM photos p WHERE p.album_id = a.id ORDER BY p.created_at DESC, p.id DESC LIMIT 1) AS "latestPhotoId"
-    FROM albums a WHERE a.id = $1`, [id]);
+    FROM albums a LEFT JOIN collections c ON c.id = a.collection_id WHERE a.id = $1`, [id]);
   return rows[0] || null;
 }
 
-async function createAlbum({ name, description, visibility, passwordHash }) {
-  const { rows } = await query(`INSERT INTO albums (name, description, visibility, password_hash)
-    VALUES ($1, $2, $3, $4) RETURNING id`, [name, description || null, visibility, passwordHash || null]);
+async function createAlbum({ name, description, visibility, passwordHash, collectionId }) {
+  const { rows } = await query(`INSERT INTO albums (name, description, visibility, password_hash, collection_id)
+    VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+  [name, description || null, visibility, passwordHash || null, collectionId || null]);
   return getAlbumById(rows[0].id);
 }
 
-async function updateAlbum(id, { name, description, visibility, passwordHash, coverPhotoId }) {
+async function updateAlbum(id, { name, description, visibility, passwordHash, coverPhotoId, collectionId }) {
   await query(`UPDATE albums SET name = $1, description = $2, visibility = $3, password_hash = $4,
-    cover_photo_id = $5, updated_at = CAST(CURRENT_TIMESTAMP AS TEXT) WHERE id = $6`,
-  [name, description || null, visibility, passwordHash || null, coverPhotoId || null, id]);
+    cover_photo_id = $5, collection_id = $6, updated_at = CAST(CURRENT_TIMESTAMP AS TEXT) WHERE id = $7`,
+  [name, description || null, visibility, passwordHash || null, coverPhotoId || null, collectionId || null, id]);
   return getAlbumById(id);
+}
+
+async function listAlbumIdsInCollection(collectionId) {
+  const { rows } = await query('SELECT id FROM albums WHERE collection_id = $1', [collectionId]);
+  return rows.map((row) => row.id);
 }
 
 async function clearCoverPhoto(photoId) {
@@ -94,6 +102,7 @@ module.exports = {
   getAlbumById,
   createAlbum,
   updateAlbum,
+  listAlbumIdsInCollection,
   clearCoverPhoto,
   deleteAlbum,
   listAlbumPhotos,

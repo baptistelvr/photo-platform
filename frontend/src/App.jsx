@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { PageLoader } from './components/ui';
 import { useAuth } from './hooks/useAuth';
 import { AlbumPage } from './pages/AlbumPage';
+import { CollectionPage } from './pages/CollectionPage';
 import { CollectionsPage } from './pages/CollectionsPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
@@ -16,6 +17,7 @@ const AccountPage = named(() => import('./pages/AccountPage'), 'AccountPage');
 const ManageAlbumsPage = named(() => import('./pages/ManageAlbumsPage'), 'ManageAlbumsPage');
 const ManageUsersPage = named(() => import('./pages/ManageUsersPage'), 'ManageUsersPage');
 const AdminLogsPage = named(() => import('./pages/AdminLogsPage'), 'AdminLogsPage');
+const StoragePage = named(() => import('./pages/StoragePage'), 'StoragePage');
 
 function Protected({ children, anyOf }) {
   const { loading, isAuthenticated, hasAnyPermission } = useAuth();
@@ -32,7 +34,8 @@ export default function App() {
       <Route element={<Layout />}>
         <Route index element={<HomePage />} />
         <Route path="collections" element={<CollectionsPage />} />
-        <Route path="collections/:id" element={<AlbumPage />} />
+        <Route path="collections/:id" element={<CollectionPage />} />
+        <Route path="albums/:id" element={<AlbumPage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="account" element={<Protected><AccountPage /></Protected>} />
         <Route path="upload" element={<Protected anyOf={['UPLOAD_PHOTOS']}><UploadPage /></Protected>} />
@@ -42,6 +45,7 @@ export default function App() {
         />
         <Route path="manage/users" element={<Protected anyOf={['MANAGE_USERS']}><ManageUsersPage /></Protected>} />
         <Route path="admin/logs" element={<Protected anyOf={['MANAGE_PERMISSIONS']}><AdminLogsPage /></Protected>} />
+        <Route path="admin/storage" element={<Protected anyOf={['MANAGE_PERMISSIONS']}><StoragePage /></Protected>} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

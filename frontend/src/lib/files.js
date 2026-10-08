@@ -95,14 +95,16 @@ export function normalizeName(name) {
 }
 
 /**
- * Turns a folder tree into collections.
- * - One folder containing sub-folders: each sub-folder is a collection; photos
- *   sitting directly in the root folder go to a collection named after it.
- * - Several folders, or one folder without sub-folders: each folder is a collection.
- * Deeper levels are merged into their collection. Files outside any folder are
- * returned separately in `loose`.
+ * Turns a folder tree into albums grouped by collection:
+ *   <collection>/<album>/photo.jpg   (deeper folders are merged into their album)
+ *   <collection>/photo.jpg           → album named after the collection
+ * With `rootIsContainer`, the single top folder only holds the collections
+ * (e.g. "MesPhotos/Vacances/Nice/…") and is not itself a collection.
+ *
+ * Returns { albums, loose, skipped, root } where `root` describes the single
+ * top folder (if any) and whether it looks like a container by default.
  */
-export function groupIntoCollections(items) {
+export function groupIntoAlbums(items, { rootIsContainer } = {}) {
   const withDirs = [];
   const loose = [];
   let skipped = 0;
@@ -121,19 +123,26 @@ export function groupIntoCollections(items) {
   }
 
   const tops = new Set(withDirs.map((item) => item.dirs[0]));
-  const singleRoot = tops.size === 1 && withDirs.some((item) => item.dirs.length > 1);
+  const root = tops.size === 1
+    ? { name: [...tops][0], container: withDirs.some((item) => item.dirs.length >= 3) }
+    : null;
+  const container = root ? (rootIsContainer ?? root.container) : false;
 
-  const groups = new Map();
+  const label = (value) => value.trim().slice(0, 120) || 'Sans titre';
+  const albums = new Map();
   for (const { file, dirs } of withDirs) {
-    const raw = singleRoot && dirs.length > 1 ? dirs[1] : dirs[0];
-    const label = raw.trim().slice(0, 120) || 'Sans titre';
-    const key = normalizeName(label);
-    if (!groups.has(key)) groups.set(key, { key, name: label, files: [] });
-    groups.get(key).files.push(file);
+    const rel = container && dirs.length > 1 ? dirs.slice(1) : dirs;
+    const collectionName = label(rel[0]);
+    const albumName = label(rel[1] ?? rel[0]);
+    const collectionKey = normalizeName(collectionName);
+    const key = `${collectionKey}/${normalizeName(albumName)}`;
+    if (!albums.has(key)) albums.set(key, { key, collectionKey, collectionName, name: albumName, files: [] });
+    albums.get(key).files.push(file);
   }
 
-  const sorted = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
-  return { groups: sorted, loose, skipped };
+  const byName = (a, b) => a.localeCompare(b, 'fr', { numeric: true });
+  const sorted = [...albums.values()].sort((a, b) => byName(a.collectionName, b.collectionName) || byName(a.name, b.name));
+  return { albums: sorted, loose, skipped, root };
 }
 
 /** Runs async tasks with at most `limit` in flight; stops picking new ones when shouldStop() is true. */

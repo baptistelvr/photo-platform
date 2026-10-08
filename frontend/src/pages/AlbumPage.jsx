@@ -10,6 +10,7 @@ import { EmptyState, ErrorState, PageHeader, PageLoader, PasswordInput, Spinner 
 import { useAuth } from '../hooks/useAuth';
 import { useConfirm } from '../hooks/useConfirm';
 import { useToast } from '../hooks/useToast';
+import { groupAlbumsByCollection } from '../lib/albums';
 import { api, thumbnailUrl } from '../lib/api';
 import { formatDate, pluralize } from '../lib/format';
 
@@ -129,7 +130,11 @@ function MovePhotoModal({ photo, currentAlbumId, onClose, onMoved }) {
           <label className="field-label" htmlFor="move-target">Album de destination</label>
           <select id="move-target" className="select" value={target} onChange={(e) => setTarget(e.target.value)} required>
             <option value="" disabled>Choisir un album…</option>
-            {albums.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            {groupAlbumsByCollection(albums).map((group) => (
+              <optgroup key={group.key} label={group.label}>
+                {group.albums.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </optgroup>
+            ))}
           </select>
         </div>
       )}
@@ -251,7 +256,7 @@ export function AlbumPage() {
   };
 
   const copyLink = async () => {
-    const url = `${window.location.origin}/collections/${album.id}`;
+    const url = `${window.location.origin}/albums/${album.id}`;
     try {
       await navigator.clipboard.writeText(url);
       toast.success(album.hasPassword ? 'Lien copié — n’oubliez pas de partager le mot de passe.' : 'Lien copié');
@@ -271,7 +276,7 @@ export function AlbumPage() {
     try {
       await api.deleteAlbum(album.id);
       toast.success('Album supprimé');
-      navigate('/collections');
+      navigate(album.collectionId ? `/collections/${album.collectionId}` : '/collections');
     } catch (error) {
       toast.error(error.message);
     }
@@ -280,7 +285,9 @@ export function AlbumPage() {
   return (
     <>
       <PageHeader
-        back={{ to: '/collections', label: 'Collections' }}
+        back={album.collectionId
+          ? { to: `/collections/${album.collectionId}`, label: album.collectionName }
+          : { to: '/collections', label: 'Collections' }}
         title={album.name}
         subtitle={album.description || undefined}
         actions={(

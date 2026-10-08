@@ -39,7 +39,7 @@ function WallTile({ tile }) {
   }
   return (
     <Link
-      to={`/collections/${tile.photo.albumId}?photo=${tile.photo.id}`}
+      to={`/albums/${tile.photo.albumId}?photo=${tile.photo.id}`}
       className="wall-tile"
       style={style}
       tabIndex={-1}

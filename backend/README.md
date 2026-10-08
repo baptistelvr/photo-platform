@@ -16,9 +16,9 @@ API Express 5 en CommonJS. Le point d'entrée Vercel est `api/index.js`, qui exp
 src/
   app.js            construction de l'app, initialisation paresseuse, /api/health
   routes/index.js   toutes les routes et les permissions requises, en un coup d'œil
-  controllers/      logique HTTP (albums, photos, utilisateurs, auth, journal)
+  controllers/      logique HTTP (collections, albums, photos, utilisateurs, auth, administration)
   repositories/     requêtes SQL, compatibles SQLite et Postgres
-  services/         droits d'accès, stockage (disque ou Vercel Blob), traitement d'image
+  services/         droits d'accès, stockage (disque ou bucket S3), traitement d'image
   middlewares/      session utilisateur, contrôle d'origine (CSRF), erreurs
   utils/            schémas zod, sérialiseurs, erreurs HTTP
 ```
@@ -27,6 +27,6 @@ Les réponses passent par `utils/serializers.js` : ni les chemins de stockage ni
 
 ## Variables d'environnement
 
-Voir `.env.example`. En production sur Vercel, `POSTGRES_URL` et `BLOB_READ_WRITE_TOKEN` sont fournis par les intégrations ; seul `SESSION_SECRET` est à ajouter à la main.
+Voir `.env.example`. En production sur Vercel, `POSTGRES_URL` vient de l'intégration Neon. `SESSION_SECRET` et les variables `S3_*` du bucket (Cloudflare R2 ou Backblaze B2) sont à ajouter à la main, voir le README principal.
 
 Avant d'ajouter une dépendance, vérifiez qu'elle propose bien un export `require` (CommonJS). Un paquet ESM uniquement fait planter la fonction sur Vercel (voir le README principal).

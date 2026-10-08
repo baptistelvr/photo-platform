@@ -49,7 +49,7 @@ function AccessPicker({ selected, onChange }) {
 }
 
 /** Create (album = null) or edit an album. Calls onSaved(album) on success. */
-export function AlbumFormModal({ open, album, onClose, onSaved }) {
+export function AlbumFormModal({ open, album, onClose, onSaved, defaultCollectionId = null }) {
   const { hasPermission } = useAuth();
   const toast = useToast();
   const editing = Boolean(album);
@@ -58,6 +58,12 @@ export function AlbumFormModal({ open, album, onClose, onSaved }) {
   const [error, setError] = useState('');
   // Album lists do not include access lists: fetch them before allowing an overwrite.
   const [accessUserIds, setAccessUserIds] = useState(null);
+  const [collections, setCollections] = useState(null);
+
+  useEffect(() => {
+    if (!open) return;
+    api.listCollections().then(setCollections).catch(() => setCollections([]));
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -68,6 +74,7 @@ export function AlbumFormModal({ open, album, onClose, onSaved }) {
       visibility: album?.visibility || 'public',
       password: '',
       removePassword: false,
+      collectionId: String(album ? (album.collectionId ?? '') : (defaultCollectionId ?? '')),
     });
     if (!album) {
       setAccessUserIds([]);
@@ -85,7 +92,7 @@ export function AlbumFormModal({ open, album, onClose, onSaved }) {
     return () => {
       active = false;
     };
-  }, [open, album]);
+  }, [open, album, defaultCollectionId]);
 
   const set = (key) => (value) => setForm((current) => ({ ...current, [key]: value }));
   const canPickUsers = hasPermission('MANAGE_USERS');
@@ -100,6 +107,7 @@ export function AlbumFormModal({ open, album, onClose, onSaved }) {
       name: form.name.trim(),
       description: form.description.trim(),
       visibility: form.visibility,
+      collectionId: form.collectionId ? Number(form.collectionId) : null,
       ...(form.visibility === 'protected' && form.password ? { password: form.password } : {}),
       ...(form.visibility === 'protected' && form.removePassword ? { removePassword: true } : {}),
       ...(canPickUsers && form.visibility === 'protected' && accessUserIds ? { accessUserIds } : {}),
@@ -149,6 +157,18 @@ export function AlbumFormModal({ open, album, onClose, onSaved }) {
               autoFocus
               placeholder="Vacances d’été, Mariage de Léa…"
             />
+          </Field>
+          <Field label="Collection" htmlFor="album-collection" hint={collections && !collections.length ? 'Aucune collection pour l’instant : créez-en une depuis la page Collections.' : undefined}>
+            <select
+              id="album-collection"
+              className="select"
+              value={form.collectionId}
+              onChange={(e) => set('collectionId')(e.target.value)}
+              disabled={!collections}
+            >
+              <option value="">Aucune collection</option>
+              {(collections || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
           </Field>
           <Field label="Description" htmlFor="album-description" hint="Facultative">
             <textarea

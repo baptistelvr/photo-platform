@@ -78,6 +78,12 @@ export const api = {
   changePassword: (currentPassword, newPassword) =>
     request('/api/auth/change-password', { method: 'POST', body: { currentPassword, newPassword } }),
 
+  listCollections: () => request('/api/collections'),
+  getCollection: (id) => request(`/api/collections/${id}`),
+  createCollection: (body) => request('/api/collections', { method: 'POST', body }),
+  updateCollection: (id, body) => request(`/api/collections/${id}`, { method: 'PUT', body }),
+  deleteCollection: (id) => request(`/api/collections/${id}`, { method: 'DELETE' }),
+
   listAlbums: (options) => request('/api/albums', options),
   getAlbum: (id, password) => request(`/api/albums/${id}`, { headers: albumHeaders(password) }),
   listAlbumPhotos: (id, password) => request(`/api/albums/${id}/photos`, { headers: albumHeaders(password) }),
@@ -102,6 +108,8 @@ export const api = {
   listPermissions: () => request('/api/permissions'),
 
   getLogs: () => request('/api/admin/logs'),
+  getStorage: () => request('/api/admin/storage'),
+  pruneStorage: (deleteEmptyAlbums) => request('/api/admin/storage/prune', { method: 'POST', body: { deleteEmptyAlbums } }),
 };
 
 export function thumbnailUrl(photoId) {

@@ -1,7 +1,7 @@
 import { ArrowRight, Images, LogIn, Sparkles, Upload } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { AlbumGrid } from '../components/AlbumCard';
+import { AlbumGrid, CollectionGrid } from '../components/AlbumCard';
 import { PhotoWall } from '../components/PhotoWall';
 import { EmptyState } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
@@ -48,11 +48,15 @@ function useShowcaseMotion(sectionRef, wallRef) {
 
 export function HomePage() {
   const { isAuthenticated, user, hasPermission } = useAuth();
-  const { data: albums, loading } = useFetch(() => api.listAlbums(), [user?.id]);
+  const { data: collections, loading: loadingCollections } = useFetch(() => api.listCollections(), [user?.id]);
+  const { data: albums, loading: loadingAlbums } = useFetch(() => api.listAlbums(), [user?.id]);
   const { data: showcase } = useFetch(() => api.showcase(32), []);
   const sectionRef = useRef(null);
   const wallRef = useRef(null);
   const motion = useShowcaseMotion(sectionRef, wallRef);
+  const loading = loadingCollections || loadingAlbums;
+  // Collections first; albums only while nothing is organised in collections yet.
+  const showCollections = loading || collections?.length > 0;
   const recent = albums?.slice(0, 6);
 
   return (
@@ -97,15 +101,17 @@ export function HomePage() {
 
       <section>
         <div className="section-header">
-          <h2>Albums récents</h2>
-          {albums?.length > 6 && (
+          <h2>{showCollections ? 'Collections' : 'Albums récents'}</h2>
+          {(showCollections ? collections?.length > 6 : albums?.length > 6) && (
             <Link to="/collections">Tout voir <ArrowRight aria-hidden="true" /></Link>
           )}
         </div>
-        {!loading && !albums?.length ? (
+        {!loading && !collections?.length && !albums?.length ? (
           <EmptyState icon={Images} title="Aucun album pour l’instant">
             {isAuthenticated ? 'Les albums auxquels vous avez accès apparaîtront ici.' : 'Connectez-vous pour voir les albums qui vous sont réservés.'}
           </EmptyState>
+        ) : showCollections ? (
+          <CollectionGrid collections={collections?.slice(0, 6)} loading={loading} skeletons={3} />
         ) : (
           <AlbumGrid albums={recent} loading={loading} skeletons={3} />
         )}
