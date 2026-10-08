@@ -24,7 +24,9 @@ import csv
 import os
 import re
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urljoin, urlparse, unquote
 
@@ -47,6 +49,9 @@ OUTPUT_DIR = (
     else Path(__file__).resolve().parent / "pbase_nto_feeling"
 )
 
+# Nombre de photos téléchargées en parallèle. 6 est un bon compromis ;
+# monte à 10 pour aller plus vite, descends à 3 si le site répond des erreurs 429/5xx.
+WORKERS = 6
 REQUEST_DELAY = 0.4
 REQUEST_TIMEOUT = 60
 MAX_RETRIES = 4
@@ -66,6 +71,7 @@ LOG_FILE = OUTPUT_DIR / "download_log.csv"
 
 visited_galleries = set()
 claimed_names = {}
+lock = threading.Lock()
 stats = {"downloaded": 0, "skipped": 0, "failed": 0, "photos": 0}
 
 
@@ -122,8 +128,13 @@ def get_soup(url):
 
 
 def log_result(status, page, url, local, size="", error=""):
-    with open(LOG_FILE, "a", newline="", encoding="utf-8") as f:
+    with lock, open(LOG_FILE, "a", newline="", encoding="utf-8") as f:
         csv.writer(f).writerow([status, page, url, local, size, error])
+
+
+def bump(key):
+    with lock:
+        stats[key] += 1
 
 
 def is_image_page(url):
@@ -213,26 +224,28 @@ def download_photo(page_url, folder):
 
     soup = get_soup(page_url)
     if soup is None:
-        stats["failed"] += 1
+        bump("failed")
         log_result("FAILED", page_url, "", "", error="page photo illisible")
         return
     file_url, size = best_photo(soup)
     if not file_url:
-        stats["failed"] += 1
+        bump("failed")
         log_result("FAILED", page_url, "", "", error="aucune URL d'image trouvée")
         print(f"    [ERREUR] pas d'URL d'image : {page_url}")
         return
-    stats["photos"] += 1
+    bump("photos")
 
     name = filename_for(file_url, image_id)
     path = folder / name
     # Deux photos différentes avec le même nom dans un album : on ajoute l'identifiant.
-    if claimed_names.setdefault(path, image_id) != image_id:
+    with lock:
+        taken = claimed_names.setdefault(path, image_id) != image_id
+    if taken:
         stem, ext = os.path.splitext(name)
         path = folder / f"{stem}_{image_id}{ext}"
 
     if path.exists() and path.stat().st_size > 0:
-        stats["skipped"] += 1
+        bump("skipped")
         return
 
     if size != "original":
@@ -241,7 +254,7 @@ def download_photo(page_url, folder):
     tmp = path.with_suffix(path.suffix + ".part")
     r = request(file_url, stream=True, referer=page_url)
     if r is None:
-        stats["failed"] += 1
+        bump("failed")
         log_result("FAILED", page_url, file_url, str(path), error="téléchargement impossible")
         return
     try:
@@ -252,11 +265,11 @@ def download_photo(page_url, folder):
         if tmp.stat().st_size == 0:
             raise RuntimeError("fichier vide")
         os.replace(tmp, path)
-        stats["downloaded"] += 1
+        bump("downloaded")
         print(f"    [OK] {path.name}")
         log_result("DOWNLOADED", page_url, file_url, str(path), path.stat().st_size)
     except Exception as e:
-        stats["failed"] += 1
+        bump("failed")
         print(f"    [ERREUR] {e}")
         log_result("FAILED", page_url, file_url, str(path), error=str(e))
         tmp.unlink(missing_ok=True)
@@ -278,7 +291,7 @@ def process_gallery(url, folder, depth=0):
 
     soup = get_soup(url)
     if soup is None:
-        stats["failed"] += 1
+        bump("failed")
         return
 
     photos, subs = parse_gallery(url, soup)
@@ -292,8 +305,10 @@ def process_gallery(url, folder, depth=0):
     print(f"{indent}📁 {folder}  ({len(photos)} photos, {len(subs)} sous-albums)")
     folder.mkdir(parents=True, exist_ok=True)
 
-    for photo in photos:
-        download_photo(photo, folder)
+    # Les photos d'un album sont téléchargées en parallèle.
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        for future in [pool.submit(download_photo, ph, folder) for ph in photos]:
+            future.result()
 
     used = set()
     for name, sub_url in subs:
