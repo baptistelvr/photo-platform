@@ -39,7 +39,13 @@ PROFILE = "nto_feeling"
 SITE = "https://pbase.com"
 ROOT_URL = f"{SITE}/{PROFILE}/root&page=all"
 
-OUTPUT_DIR = Path("pbase_nto_feeling")
+# Dossier de destination : par défaut "pbase_nto_feeling" À CÔTÉ de ce script
+# (et non dans le dossier où l'invite de commandes est ouverte).
+# On peut aussi le choisir en argument : python pbase_download.py "F:\\Mon dossier"
+OUTPUT_DIR = (
+    Path(sys.argv[1]) if len(sys.argv) > 1
+    else Path(__file__).resolve().parent / "pbase_nto_feeling"
+)
 
 REQUEST_DELAY = 0.4
 REQUEST_TIMEOUT = 60
