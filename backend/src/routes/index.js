@@ -7,6 +7,7 @@ const albumController = require('../controllers/albumController');
 const photoController = require('../controllers/photoController');
 const userController = require('../controllers/userController');
 const adminController = require('../controllers/adminController');
+const collectionController = require('../controllers/collectionController');
 
 const router = Router();
 
@@ -27,6 +28,13 @@ router.post('/auth/login', authController.loginLimiter, authController.login);
 router.post('/auth/logout', authController.logout);
 router.get('/auth/me', authController.me);
 router.post('/auth/change-password', requireAuth, authController.changePassword);
+
+// Collections (first level) group albums (second level)
+router.get('/collections', collectionController.listCollections);
+router.post('/collections', requirePermission(PERMISSIONS.CREATE_ALBUMS), collectionController.createCollection);
+router.get('/collections/:id', collectionController.getCollection);
+router.put('/collections/:id', requirePermission(PERMISSIONS.EDIT_ALBUMS), collectionController.updateCollection);
+router.delete('/collections/:id', requirePermission(PERMISSIONS.DELETE_ALBUMS), collectionController.deleteCollection);
 
 // Albums
 router.get('/albums', albumController.listAlbums);
@@ -60,5 +68,7 @@ router.get('/permissions', requirePermission(PERMISSIONS.MANAGE_PERMISSIONS), us
 
 // Administration
 router.get('/admin/logs', requirePermission(PERMISSIONS.MANAGE_PERMISSIONS), adminController.getLogs);
+router.get('/admin/storage', requirePermission(PERMISSIONS.MANAGE_PERMISSIONS), adminController.getStorage);
+router.post('/admin/storage/prune', requirePermission(PERMISSIONS.MANAGE_PERMISSIONS), adminController.pruneStorage);
 
 module.exports = router;

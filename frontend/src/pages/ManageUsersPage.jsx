@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirm } from '../hooks/useConfirm';
 import { useFetch } from '../hooks/useFetch';
 import { useToast } from '../hooks/useToast';
+import { albumLabel } from '../lib/albums';
 import { api } from '../lib/api';
 import { formatRelative, generatePassword, pluralize } from '../lib/format';
 import { PERMISSIONS, ROLE_LABELS } from '../lib/labels';
@@ -48,7 +49,8 @@ function UserFormModal({ open, user, albums, onClose, onSaved }) {
     ...f,
     [key]: f[key].includes(value) ? f[key].filter((v) => v !== value) : [...f[key], value],
   }));
-  const protectedAlbums = (albums || []).filter((a) => a.visibility === 'protected');
+  const protectedAlbums = (albums || []).filter((a) => a.visibility === 'protected')
+    .sort((a, b) => albumLabel(a).localeCompare(albumLabel(b), 'fr', { numeric: true }));
 
   async function submit() {
     setError('');
@@ -179,7 +181,7 @@ function UserFormModal({ open, user, albums, onClose, onSaved }) {
                 {protectedAlbums.map((album) => (
                   <label key={album.id} className="checkbox">
                     <input type="checkbox" checked={form.accessibleAlbumIds.includes(album.id)} onChange={() => toggleIn('accessibleAlbumIds', album.id)} />
-                    <span>{album.name}<small>{pluralize(album.photosCount, 'photo')}</small></span>
+                    <span>{albumLabel(album)}<small>{pluralize(album.photosCount, 'photo')}</small></span>
                   </label>
                 ))}
               </div>

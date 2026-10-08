@@ -6,6 +6,7 @@ const env = require('./config/env');
 const db = require('./config/db');
 const { migrate } = require('./db/migrate');
 const userRepository = require('./repositories/userRepository');
+const storageService = require('./services/storageService');
 const { hashPassword } = require('./utils/password');
 const { ConfigError, HttpError } = require('./utils/httpError');
 const { loadUser } = require('./middlewares/auth');
@@ -41,6 +42,7 @@ async function runInitialization() {
     throw new ConfigError('SESSION_SECRET manquant : ajoutez une valeur aléatoire longue dans les variables d’environnement.');
   }
   db.assertConfigured();
+  storageService.assertConfigured();
   await migrate();
   await bootstrapInitialAdmin();
 }
@@ -83,7 +85,7 @@ function createApp() {
     res.set('Cache-Control', 'no-store');
     try {
       await initialize();
-      res.json({ success: true, status: 'ok', database: db.dialect, storage: env.USE_BLOB_STORAGE ? 'vercel-blob' : 'local' });
+      res.json({ success: true, status: 'ok', database: db.dialect, storage: storageService.describe().driver });
     } catch (error) {
       const safe = error instanceof HttpError;
       if (!safe) console.error('Initialization failed:', error); // eslint-disable-line no-console

@@ -23,6 +23,16 @@ const albumSchema = z.object({
   removePassword: z.boolean().optional(),
   coverPhotoId: id.nullable().optional(),
   accessUserIds: z.array(id).optional(),
+  collectionId: id.nullable().optional(),
+});
+
+const collectionSchema = z.object({
+  name: trimmed(120).min(1, 'Nom requis'),
+  description: trimmed(1000).optional().or(z.literal('')),
+});
+
+const storagePruneSchema = z.object({
+  deleteEmptyAlbums: z.boolean().default(false),
 });
 
 const photoMoveSchema = z.object({
@@ -48,6 +58,8 @@ module.exports = {
   loginSchema,
   changePasswordSchema,
   albumSchema,
+  collectionSchema,
+  storagePruneSchema,
   photoMoveSchema,
   userSchema,
   resetPasswordSchema,

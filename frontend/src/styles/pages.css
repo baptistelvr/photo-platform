@@ -1085,3 +1085,129 @@ a.wall-tile:hover {
     grid-column: 2 / -1;
   }
 }
+
+/* ---------- Collections ---------- */
+/* A collection looks like a small stack of prints. */
+.collection-card .album-cover {
+  margin: 10px 10px 0 0;
+  box-shadow:
+    var(--shadow-sm),
+    6px -6px 0 -1px var(--bg),
+    6px -6px 0 0 var(--border-strong),
+    12px -12px 0 -2px var(--bg),
+    12px -12px 0 -1px var(--border);
+}
+
+.page-section {
+  margin-top: 40px;
+}
+
+.collection-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 8px 0 10px;
+}
+
+.collection-section + .collection-section .collection-heading {
+  margin-top: 32px;
+}
+
+.collection-section:first-of-type .collection-heading {
+  margin-top: 0;
+}
+
+.collection-heading h2 a {
+  color: inherit;
+}
+
+.collection-heading h2 a:hover {
+  color: var(--accent);
+}
+
+.collection-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collection-heading h2 svg {
+  width: 19px;
+  height: 19px;
+  color: var(--text-muted);
+}
+
+.batch-collection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.batch-collection svg {
+  width: 17px;
+  height: 17px;
+  color: var(--text-muted);
+}
+
+.root-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+/* ---------- Storage ---------- */
+.storage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.storage-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.storage-card p {
+  margin-top: 2px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.storage-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--surface-muted);
+  color: var(--text-soft);
+  flex-shrink: 0;
+}
+
+.storage-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.storage-icon.success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.storage-icon.warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}

@@ -46,10 +46,34 @@ async function publicTotals() {
   return rows[0];
 }
 
+async function listAllPaths() {
+  const { rows } = await query(`SELECT id, album_id AS "albumId", original_path AS "originalPath",
+    thumbnail_path AS "thumbnailPath" FROM photos`);
+  return rows;
+}
+
+/** Removes photo rows (not files) and clears album covers that pointed to them. */
+async function deletePhotoRows(ids) {
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    await query(`DELETE FROM photos WHERE id IN (${chunk.map((_, n) => `$${n + 1}`).join(', ')})`, chunk);
+  }
+  await query('UPDATE albums SET cover_photo_id = NULL WHERE cover_photo_id IS NOT NULL AND cover_photo_id NOT IN (SELECT id FROM photos)');
+}
+
+/** Deletes albums without photos (and collections left without albums). Returns the number of albums removed. */
+async function deleteEmptyAlbums() {
+  const { rows } = await query('SELECT id FROM albums a WHERE NOT EXISTS (SELECT 1 FROM photos p WHERE p.album_id = a.id)');
+  for (const row of rows) await query('DELETE FROM albums WHERE id = $1', [row.id]);
+  await query('DELETE FROM collections WHERE NOT EXISTS (SELECT 1 FROM albums a WHERE a.collection_id = collections.id)');
+  return rows.length;
+}
+
 async function reassignUploader(fromUserId, toUserId) {
   await query('UPDATE photos SET uploaded_by = $1 WHERE uploaded_by = $2', [toUserId, fromUserId]);
 }
 
 module.exports = {
   createPhoto, getPhotoById, deletePhoto, movePhoto, updatePaths, reassignUploader, listPublicShowcase, publicTotals,
+  listAllPaths, deletePhotoRows, deleteEmptyAlbums,
 };

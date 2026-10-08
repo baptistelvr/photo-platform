@@ -1,5 +1,5 @@
 import {
-  CircleCheck, CircleX, CloudUpload, Folder, FolderOpen, FolderPlus, Globe, LoaderCircle, Lock, Square, X,
+  CircleCheck, CircleX, CloudUpload, Folder, FolderOpen, FolderPlus, Globe, Library, LoaderCircle, Lock, Square, X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -7,9 +7,10 @@ import { AlbumFormModal } from '../components/AlbumFormModal';
 import { PageHeader, PageLoader, Spinner } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { groupAlbumsByCollection } from '../lib/albums';
 import { api, ApiError } from '../lib/api';
 import {
-  MAX_UPLOAD_BYTES, captureDrop, filesFromDrop, filesFromInput, groupIntoCollections, isHiddenFile, isJpegFile,
+  MAX_UPLOAD_BYTES, captureDrop, filesFromDrop, filesFromInput, groupIntoAlbums, isHiddenFile, isJpegFile,
   normalizeName, runPool, shrinkToLimit,
 } from '../lib/files';
 import { formatBytes, pluralize } from '../lib/format';
@@ -64,13 +65,64 @@ function StatusIcon({ status }) {
   return null;
 }
 
-/* ---------- Folder import: one collection per sub-folder ---------- */
+/* ---------- Folder import: collection › album › photos ---------- */
 
-function FolderBatch({ batch, setBatch, running, autoResize }) {
+function AlbumRow({ group, running, autoResize, onToggle }) {
+  const tooBig = autoResize ? 0 : group.files.filter((f) => f.file.size > MAX_UPLOAD_BYTES).length;
+  const eligible = group.files.length - tooBig;
+  const done = group.files.filter((f) => f.status === 'done').length;
+  const failed = group.files.filter((f) => f.status === 'error');
+  const toShrink = autoResize ? group.files.filter((f) => f.file.size > MAX_UPLOAD_BYTES && !f.already).length : 0;
+  const already = group.files.filter((f) => f.already).length;
+  const finished = group.include && eligible > 0 && done + failed.length >= eligible && !running;
+  return (
+    <div className={`data-row${group.include ? '' : ' excluded'}`}>
+      <input
+        type="checkbox"
+        checked={group.include}
+        disabled={running}
+        onChange={(e) => onToggle(e.target.checked)}
+        aria-label={`Importer l’album ${group.name}`}
+      />
+      <div className="cell-main">
+        <Folder aria-hidden="true" className="folder-icon" />
+        <div>
+          <div className="cell-title truncate">{group.name}</div>
+          <div className="cell-sub">
+            {group.albumId
+              ? <span className="badge">Album existant</span>
+              : <span className="badge badge-accent">Nouvel album</span>}
+            {already > 0 && <span> · {pluralize(already, 'déjà présente', 'déjà présentes')}</span>}
+            {toShrink > 0 && done < eligible && <span> · {pluralize(toShrink, 'photo sera réduite', 'photos seront réduites')}</span>}
+            {tooBig > 0 && <span className="error-text"> · {pluralize(tooBig, 'photo trop lourde', 'photos trop lourdes')} (&gt; 1 Mo)</span>}
+            {group.error && <span className="error-text"> · {group.error}</span>}
+            {failed.length > 0 && <span className="error-text"> · {pluralize(failed.length, 'échec')} : {failed[0].message}</span>}
+          </div>
+        </div>
+      </div>
+      <div className="cell-extra batch-progress">
+        <span>{done} / {eligible}</span>
+        <div className="progress"><span style={{ width: `${(done / Math.max(eligible, 1)) * 100}%` }} /></div>
+      </div>
+      <div className={`batch-status${finished && !failed.length ? ' done' : ''}${failed.length || group.error ? ' error' : ''}`}>
+        {finished && !failed.length && !group.error ? <CircleCheck aria-hidden="true" /> : <StatusIcon status={group.status} />}
+      </div>
+    </div>
+  );
+}
+
+function FolderBatch({ batch, setBatch, running, autoResize, onRootModeChange }) {
   const updateGroup = (key, patch) => setBatch((b) => ({
     ...b,
     groups: b.groups.map((g) => (g.key === key ? { ...g, ...patch } : g)),
   }));
+  const collections = [];
+  for (const group of batch.groups) {
+    const last = collections[collections.length - 1];
+    if (last?.key === group.collectionKey) last.groups.push(group);
+    else collections.push({ key: group.collectionKey, name: group.collectionName, exists: Boolean(group.collectionId), groups: [group] });
+  }
+  const photos = batch.groups.reduce((n, g) => n + g.files.length, 0);
 
   return (
     <section className="card batch">
@@ -79,57 +131,47 @@ function FolderBatch({ batch, setBatch, running, autoResize }) {
         <div>
           <h2>Import de dossier</h2>
           <p className="muted">
-            {pluralize(batch.groups.length, 'collection')} · {pluralize(batch.groups.reduce((n, g) => n + g.files.length, 0), 'photo')}
+            {pluralize(collections.length, 'collection')} · {pluralize(batch.groups.length, 'album')} · {pluralize(photos, 'photo')}
             {batch.skipped > 0 && ` · ${pluralize(batch.skipped, 'fichier ignoré', 'fichiers ignorés')} (pas en JPEG)`}
             {batch.loose > 0 && ` · ${pluralize(batch.loose, 'photo hors dossier ignorée', 'photos hors dossier ignorées')}`}
           </p>
         </div>
       </header>
 
+      {batch.root && (
+        <div className="root-toggle">
+          <span>Le dossier « {batch.root.name} »</span>
+          <div className="segmented" role="group" aria-label={`Rôle du dossier ${batch.root.name}`}>
+            <button type="button" disabled={running} aria-pressed={batch.rootIsContainer} onClick={() => onRootModeChange(true)}>
+              contient mes collections
+            </button>
+            <button type="button" disabled={running} aria-pressed={!batch.rootIsContainer} onClick={() => onRootModeChange(false)}>
+              est une collection
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="data-list batch-list">
-        {batch.groups.map((group) => {
-          const tooBig = autoResize ? 0 : group.files.filter((f) => f.file.size > MAX_UPLOAD_BYTES).length;
-          const eligible = group.files.length - tooBig;
-          const done = group.files.filter((f) => f.status === 'done').length;
-          const failed = group.files.filter((f) => f.status === 'error');
-          const toShrink = autoResize ? group.files.filter((f) => f.file.size > MAX_UPLOAD_BYTES && !f.already).length : 0;
-          const already = group.files.filter((f) => f.already).length;
-          const finished = group.include && eligible > 0 && done + failed.length >= eligible && !running;
-          return (
-            <div key={group.key} className={`data-row${group.include ? '' : ' excluded'}`}>
-              <input
-                type="checkbox"
-                checked={group.include}
-                disabled={running}
-                onChange={(e) => updateGroup(group.key, { include: e.target.checked })}
-                aria-label={`Importer la collection ${group.name}`}
-              />
-              <div className="cell-main">
-                <Folder aria-hidden="true" className="folder-icon" />
-                <div>
-                  <div className="cell-title truncate">{group.name}</div>
-                  <div className="cell-sub">
-                    {group.albumId
-                      ? <span className="badge">Album existant</span>
-                      : <span className="badge badge-accent">Nouvel album</span>}
-                    {already > 0 && <span> · {pluralize(already, 'déjà présente', 'déjà présentes')}</span>}
-                    {toShrink > 0 && done < eligible && <span> · {pluralize(toShrink, 'photo sera réduite', 'photos seront réduites')}</span>}
-                    {tooBig > 0 && <span className="error-text"> · {pluralize(tooBig, 'photo trop lourde', 'photos trop lourdes')} (&gt; 1 Mo)</span>}
-                    {group.error && <span className="error-text"> · {group.error}</span>}
-                    {failed.length > 0 && <span className="error-text"> · {pluralize(failed.length, 'échec')} : {failed[0].message}</span>}
-                  </div>
-                </div>
-              </div>
-              <div className="cell-extra batch-progress">
-                <span>{done} / {eligible}</span>
-                <div className="progress"><span style={{ width: `${(done / Math.max(eligible, 1)) * 100}%` }} /></div>
-              </div>
-              <div className={`batch-status${finished && !failed.length ? ' done' : ''}${failed.length || group.error ? ' error' : ''}`}>
-                {finished && !failed.length && !group.error ? <CircleCheck aria-hidden="true" /> : <StatusIcon status={group.status} />}
-              </div>
+        {collections.map((collection) => (
+          <div key={collection.key}>
+            <div className="batch-collection">
+              <Library aria-hidden="true" /> {collection.name}
+              {collection.exists
+                ? <span className="badge">Collection existante</span>
+                : <span className="badge badge-accent">Nouvelle collection</span>}
             </div>
-          );
-        })}
+            {collection.groups.map((group) => (
+              <AlbumRow
+                key={group.key}
+                group={group}
+                running={running}
+                autoResize={autoResize}
+                onToggle={(include) => updateGroup(group.key, { include })}
+              />
+            ))}
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -147,6 +189,7 @@ export function UploadPage() {
   const stopRequested = useRef(false);
 
   const [albums, setAlbums] = useState(null);
+  const [collections, setCollections] = useState([]);
   const [albumId, setAlbumId] = useState(searchParams.get('album') || '');
   const [items, setItems] = useState([]);
   const [batch, setBatch] = useState(null);
@@ -164,6 +207,7 @@ export function UploadPage() {
   }, [items]);
 
   useEffect(() => {
+    api.listCollections().then(setCollections).catch(() => setCollections([]));
     api.listAlbums()
       .then((list) => {
         setAlbums(list);
@@ -196,35 +240,34 @@ export function UploadPage() {
     setItems((current) => [...current, ...added]);
   }
 
-  async function receive(entries) {
-    const hasFolders = entries.some(({ path }) => path.includes('/'));
-    if (!hasFolders) {
-      if (!albums.length) {
-        toast.info('Créez d’abord un album, ou glissez un dossier pour créer les collections automatiquement.');
-        return;
-      }
-      addLooseFiles(entries.map(({ file }) => file));
-      return;
-    }
-
-    const { groups, loose, skipped } = groupIntoCollections(entries);
+  /** Matches the folder tree with existing collections and albums, and marks photos already uploaded. */
+  async function buildBatch(entries, rootIsContainer) {
+    const { albums: groups, loose, skipped, root } = groupIntoAlbums(entries, { rootIsContainer });
     if (!groups.length) {
       toast.error('Aucune photo JPEG trouvée dans ce dossier.');
       return;
     }
-    const byName = new Map(albums.map((album) => [normalizeName(album.name), album]));
+    const collectionsByName = new Map(collections.map((c) => [normalizeName(c.name), c]));
+    const albumFor = (group) => {
+      const collection = collectionsByName.get(group.collectionKey);
+      if (!collection) return null;
+      return albums.find((a) => a.collectionId === collection.id && normalizeName(a.name) === normalizeName(group.name)) || null;
+    };
 
     // Photos already in an existing album (same file name) are skipped, so an
     // interrupted import can simply be started again, even after closing the tab.
     const existingNames = new Map();
     await Promise.all(groups.map(async (group) => {
-      const album = byName.get(group.key);
+      const album = albumFor(group);
       if (!album?.photosCount) return;
       const photos = await api.listAlbumPhotos(album.id).catch(() => []);
       existingNames.set(group.key, new Set(photos.map((p) => normalizeName(p.originalName))));
     }));
 
     setBatch({
+      entries,
+      root,
+      rootIsContainer: root ? (rootIsContainer ?? root.container) : false,
       skipped,
       loose: loose.length,
       groups: groups.map((group) => {
@@ -232,8 +275,11 @@ export function UploadPage() {
         return {
           key: group.key,
           name: group.name,
+          collectionKey: group.collectionKey,
+          collectionName: group.collectionName,
+          collectionId: collectionsByName.get(group.collectionKey)?.id || null,
+          albumId: albumFor(group)?.id || null,
           include: true,
-          albumId: byName.get(group.key)?.id || null,
           status: 'ready',
           error: null,
           files: group.files.map((file) => {
@@ -243,6 +289,19 @@ export function UploadPage() {
         };
       }),
     });
+  }
+
+  async function receive(entries) {
+    const hasFolders = entries.some(({ path }) => path.includes('/'));
+    if (!hasFolders) {
+      if (!albums.length) {
+        toast.info('Créez d’abord un album, ou glissez un dossier pour créer collections et albums automatiquement.');
+        return;
+      }
+      addLooseFiles(entries.map(({ file }) => file));
+      return;
+    }
+    await buildBatch(entries);
   }
 
   async function onDrop(event) {
@@ -318,10 +377,11 @@ export function UploadPage() {
     const included = batch.groups.filter((g) => g.include);
     const eligible = included.flatMap((g) => g.files).filter((f) => autoResize || f.file.size <= MAX_UPLOAD_BYTES);
     return {
-      collections: included.length,
+      albums: included.length,
       pending: eligible.filter((f) => f.status !== 'done').length,
       done: batch.groups.flatMap((g) => g.files).filter((f) => f.status === 'done').length,
       newAlbums: included.filter((g) => !g.albumId).length,
+      newCollections: new Set(included.filter((g) => !g.collectionId).map((g) => g.collectionKey)).size,
     };
   }, [batch, autoResize]);
 
@@ -339,8 +399,9 @@ export function UploadPage() {
 
     const groups = batch.groups.filter((g) => g.include);
     const targets = new Map();
+    const collectionIds = new Map(groups.filter((g) => g.collectionId).map((g) => [g.collectionKey, g.collectionId]));
 
-    // 1. Make sure every collection has an album (created once, before any upload).
+    // 1. Make sure every collection and album exists (created once, before any upload).
     for (const group of groups) {
       if (stopRequested.current) break;
       if (group.albumId) {
@@ -352,9 +413,21 @@ export function UploadPage() {
         continue;
       }
       try {
-        const album = await api.createAlbum({ name: group.name, visibility: newVisibility });
+        if (!collectionIds.has(group.collectionKey)) {
+          const collection = await api.createCollection({ name: group.collectionName });
+          collectionIds.set(group.collectionKey, collection.id);
+          setCollections((list) => [...list, collection]);
+        }
+        const collectionId = collectionIds.get(group.collectionKey);
+        const album = await api.createAlbum({ name: group.name, visibility: newVisibility, collectionId });
         targets.set(group.key, album.id);
-        setGroup(group.key, { albumId: album.id, error: null });
+        setBatch((b) => ({
+          ...b,
+          groups: b.groups.map((g) => {
+            if (g.key === group.key) return { ...g, albumId: album.id, collectionId, error: null };
+            return g.collectionKey === group.collectionKey ? { ...g, collectionId } : g;
+          }),
+        }));
         setAlbums((list) => [album, ...list]);
       } catch (error) {
         setGroup(group.key, { error: error.message });
@@ -391,9 +464,9 @@ export function UploadPage() {
     if (succeeded + failed < queue.length) {
       toast.info('Import interrompu. Relancez-le pour envoyer les photos restantes.');
     } else if (succeeded) {
-      toast.success(`${pluralize(succeeded, 'photo importée', 'photos importées')} dans ${pluralize(targets.size, 'collection')}.`);
+      toast.success(`${pluralize(succeeded, 'photo importée', 'photos importées')} dans ${pluralize(targets.size, 'album')}.`);
     }
-    if (failed) toast.error(`${pluralize(failed, 'photo n’a', 'photos n’ont')} pas pu être importée${failed > 1 ? 's' : ''}. Le détail est affiché par collection.`);
+    if (failed) toast.error(`${pluralize(failed, 'photo n’a', 'photos n’ont')} pas pu être importée${failed > 1 ? 's' : ''}. Le détail est affiché par album.`);
   }
 
   if (!albums) return <PageLoader />;
@@ -404,7 +477,7 @@ export function UploadPage() {
     <>
       <PageHeader
         title="Importer des photos"
-        subtitle="Glissez quelques photos pour un album, ou un dossier entier : chaque sous-dossier devient une collection."
+        subtitle="Glissez quelques photos dans un album, ou un dossier entier : ses sous-dossiers deviennent des collections, et leurs sous-dossiers des albums."
       />
 
       <div className="upload-layout">
@@ -422,10 +495,14 @@ export function UploadPage() {
                   setSearchParams({ album: e.target.value }, { replace: true });
                 }}
               >
-                {albums.map((album) => (
-                  <option key={album.id} value={album.id}>
-                    {album.name} ({pluralize(album.photosCount, 'photo')})
-                  </option>
+                {groupAlbumsByCollection(albums).map((group) => (
+                  <optgroup key={group.key} label={group.label}>
+                    {group.albums.map((album) => (
+                      <option key={album.id} value={album.id}>
+                        {album.name} ({pluralize(album.photosCount, 'photo')})
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
@@ -525,7 +602,15 @@ export function UploadPage() {
           )}
         </div>
 
-        {batch && <FolderBatch batch={batch} setBatch={setBatch} running={running} autoResize={autoResize} />}
+        {batch && (
+          <FolderBatch
+            batch={batch}
+            setBatch={setBatch}
+            running={running}
+            autoResize={autoResize}
+            onRootModeChange={(value) => buildBatch(batch.entries, value)}
+          />
+        )}
 
         {!batch && items.length > 0 && (
           <div className="upload-grid">
@@ -574,7 +659,8 @@ export function UploadPage() {
               ) : batch ? (
                 <>
                   <strong>{pluralize(batchTotals.pending, 'photo à importer', 'photos à importer')}</strong>
-                  <span className="muted"> · {pluralize(batchTotals.collections, 'collection')}</span>
+                  <span className="muted"> · {pluralize(batchTotals.albums, 'album')}</span>
+                  {batchTotals.newCollections > 0 && <span className="muted"> · {pluralize(batchTotals.newCollections, 'nouvelle collection', 'nouvelles collections')}</span>}
                   {batchTotals.newAlbums > 0 && <span className="muted"> · {pluralize(batchTotals.newAlbums, 'nouvel album', 'nouveaux albums')}</span>}
                   {batchTotals.done > 0 && <span className="muted"> · {pluralize(batchTotals.done, 'déjà importée', 'déjà importées')}</span>}
                 </>
@@ -604,7 +690,7 @@ export function UploadPage() {
                 {!batch && counts.done > 0 && (
                   <>
                     <button type="button" className="btn btn-ghost" onClick={clearFinished}>Vider la liste</button>
-                    <Link to={`/collections/${albumId}`} className="btn">Voir l’album</Link>
+                    <Link to={`/albums/${albumId}`} className="btn">Voir l’album</Link>
                   </>
                 )}
               </>

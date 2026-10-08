@@ -1,5 +1,6 @@
 const albumRepository = require('../repositories/albumRepository');
 const { addAuditLog } = require('../repositories/auditRepository');
+const collectionRepository = require('../repositories/collectionRepository');
 const photoRepository = require('../repositories/photoRepository');
 const { hasPermission, resolveAlbumAccess, filterVisibleAlbums } = require('../services/accessService');
 const storageService = require('../services/storageService');
@@ -15,6 +16,36 @@ const accessErrors = {
   invalid_password: [403, 'INVALID_ALBUM_PASSWORD', 'Mot de passe incorrect'],
   denied: [403, 'ALBUM_FORBIDDEN', 'Vous n’avez pas accès à cet album'],
 };
+
+async function assertCollectionExists(collectionId) {
+  if (!collectionId) return;
+  if (!(await collectionRepository.getCollectionById(collectionId))) {
+    throw new HttpError(400, 'INVALID_COLLECTION', 'Collection introuvable');
+  }
+}
+
+/**
+ * Files live under Pictures/<collection>/<album>/…; after a rename or a change of
+ * collection, move each photo of the album to its new folder (a few at a time).
+ */
+async function relocateAlbumPhotos(albumId) {
+  const album = await albumRepository.getAlbumById(albumId);
+  const photos = await albumRepository.listAlbumPhotos(albumId);
+  for (let i = 0; i < photos.length; i += 8) {
+    await Promise.all(photos.slice(i, i + 8).map(async (photo) => {
+      const paths = await storageService.movePhotoFiles(photo, album);
+      if (paths.originalPath !== photo.originalPath) await photoRepository.updatePaths(photo.id, paths);
+    }));
+  }
+}
+
+/** Deletes an album, its photo files and its rows. */
+async function destroyAlbum(album) {
+  const photos = await albumRepository.listAlbumPhotos(album.id);
+  await storageService.deletePhotoFiles(photos);
+  await albumRepository.deleteAlbum(album.id);
+  return photos.length;
+}
 
 async function loadAlbum(id) {
   const album = await albumRepository.getAlbumById(parseId(id, 'Album'));
@@ -70,12 +101,14 @@ async function listAlbumPhotos(req, res, next) {
 async function createAlbum(req, res, next) {
   try {
     const payload = albumSchema.parse(req.body);
+    await assertCollectionExists(payload.collectionId);
     const passwordHash = payload.visibility === 'protected' && payload.password ? await hashPassword(payload.password) : null;
     const album = await albumRepository.createAlbum({
       name: payload.name,
       description: payload.description,
       visibility: payload.visibility,
       passwordHash,
+      collectionId: payload.collectionId,
     });
 
     if (payload.accessUserIds?.length) await albumRepository.setAlbumAccess(album.id, payload.accessUserIds);
@@ -104,20 +137,22 @@ async function updateAlbum(req, res, next) {
       coverPhotoId = cover.id;
     }
 
-    const updated = await albumRepository.updateAlbum(current.id, {
+    // undefined keeps the current collection, null takes the album out of it.
+    const collectionId = payload.collectionId === undefined ? current.collectionId : payload.collectionId;
+    if (collectionId !== current.collectionId) await assertCollectionExists(collectionId);
+
+    let updated = await albumRepository.updateAlbum(current.id, {
       name: payload.name,
       description: payload.description,
       visibility: payload.visibility,
       passwordHash,
       coverPhotoId,
+      collectionId,
     });
 
-    // Files live under Pictures/<album name>/…, so a rename moves them.
-    if (current.name !== updated.name) {
-      for (const photo of await albumRepository.listAlbumPhotos(current.id)) {
-        const paths = await storageService.movePhotoFiles(photo, updated);
-        await photoRepository.updatePaths(photo.id, paths);
-      }
+    if (current.name !== updated.name || current.collectionId !== updated.collectionId) {
+      await relocateAlbumPhotos(current.id);
+      updated = await albumRepository.getAlbumById(current.id);
     }
 
     if (payload.accessUserIds) await albumRepository.setAlbumAccess(current.id, payload.accessUserIds);
@@ -135,10 +170,8 @@ async function updateAlbum(req, res, next) {
 async function deleteAlbum(req, res, next) {
   try {
     const album = await loadAlbum(req.params.id);
-    const photos = await albumRepository.listAlbumPhotos(album.id);
-    await storageService.deletePhotoFiles(photos);
-    await albumRepository.deleteAlbum(album.id);
-    await addAuditLog({ actorId: req.user.id, action: 'ALBUM_DELETE', objectType: 'album', objectId: String(album.id), metadata: { name: album.name, photos: photos.length }, ipAddress: req.ip });
+    const photos = await destroyAlbum(album);
+    await addAuditLog({ actorId: req.user.id, action: 'ALBUM_DELETE', objectType: 'album', objectId: String(album.id), metadata: { name: album.name, photos }, ipAddress: req.ip });
     res.json({ success: true });
   } catch (error) {
     next(error);
@@ -146,6 +179,8 @@ async function deleteAlbum(req, res, next) {
 }
 
 module.exports = {
+  relocateAlbumPhotos,
+  destroyAlbum,
   loadAlbum,
   loadReadableAlbum,
   listAlbums,

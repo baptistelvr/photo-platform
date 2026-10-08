@@ -60,9 +60,10 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  for (const table of ['album_access', 'photos', 'albums', 'user_permissions', 'audit_logs', 'users']) {
+  for (const table of ['album_access', 'photos', 'albums', 'collections', 'user_permissions', 'audit_logs', 'users']) {
     await db.query(`DELETE FROM ${table}`);
   }
+  fs.rmSync(path.join(tempDir, 'Pictures'), { recursive: true, force: true });
 });
 
 describe('health', () => {
@@ -281,5 +282,73 @@ describe('home page showcase', () => {
     expect(publicImage.headers['cache-control']).toContain('s-maxage');
     const privateImage = await agent.get(`/api/photos/${privatePhoto.id}/thumbnail`);
     expect(privateImage.headers['cache-control']).toBe('private, max-age=3600');
+  });
+});
+
+describe('collections', () => {
+  it('lists a collection only to viewers who can open one of its albums', async () => {
+    const admin = await createUser({ role: 'main_admin' });
+    const agent = await signIn(admin);
+    const voyages = (await agent.post('/api/collections').send({ name: 'Voyages' })).body.data;
+    const famille = (await agent.post('/api/collections').send({ name: 'Famille' })).body.data;
+    await agent.post('/api/albums').send({ name: 'Rome', visibility: 'public', collectionId: voyages.id });
+    await agent.post('/api/albums').send({ name: 'Mariage', visibility: 'protected', password: 'secret-album', collectionId: famille.id });
+
+    const anonymous = await request(app).get('/api/collections');
+    expect(anonymous.body.data.map((c) => c.name)).toEqual(['Voyages']);
+    expect(anonymous.body.data[0]).toMatchObject({ albumsCount: 1, photosCount: 0 });
+    expect((await request(app).get(`/api/collections/${famille.id}`)).status).toBe(404);
+
+    const detail = await request(app).get(`/api/collections/${voyages.id}`);
+    expect(detail.body.data.albums.map((a) => a.name)).toEqual(['Rome']);
+    expect(detail.body.data.albums[0]).toMatchObject({ collectionId: voyages.id, collectionName: 'Voyages' });
+
+    // Managers also see collections they cannot browse yet, so they can fill them.
+    const empty = (await agent.post('/api/collections').send({ name: 'Vide' })).body.data;
+    expect((await agent.get('/api/collections')).body.data.map((c) => c.id)).toContain(empty.id);
+  });
+
+  it('moves photo files when a collection is renamed and deletes everything with it', async () => {
+    const admin = await createUser({ role: 'main_admin' });
+    const agent = await signIn(admin);
+    const collection = (await agent.post('/api/collections').send({ name: 'Voyages' })).body.data;
+    const album = (await agent.post('/api/albums').send({ name: 'Rome', visibility: 'public', collectionId: collection.id })).body.data;
+    const photo = (await agent.post(`/api/albums/${album.id}/photos`).attach('photos', await jpeg(), { filename: 'colisee.jpg', contentType: 'image/jpeg' })).body.data[0];
+    const pictures = path.join(tempDir, 'Pictures');
+    expect(fs.readdirSync(path.join(pictures, 'Voyages', 'Rome', 'original'))).toHaveLength(1);
+
+    expect((await agent.put(`/api/collections/${collection.id}`).send({ name: 'Italie' })).status).toBe(200);
+    expect(fs.readdirSync(path.join(pictures, 'Italie', 'Rome', 'original'))).toHaveLength(1);
+    expect(fs.readdirSync(path.join(pictures, 'Voyages', 'Rome', 'original'))).toHaveLength(0);
+    expect((await request(app).get(`/api/photos/${photo.id}/thumbnail`)).status).toBe(200);
+
+    expect((await agent.delete(`/api/collections/${collection.id}`)).status).toBe(200);
+    expect((await request(app).get(`/api/albums/${album.id}`)).status).toBe(404);
+    expect(fs.readdirSync(path.join(pictures, 'Italie', 'Rome', 'original'))).toHaveLength(0);
+  });
+});
+
+describe('storage maintenance', () => {
+  it('reports photos whose files are gone and forgets them on request', async () => {
+    const admin = await createUser({ role: 'main_admin' });
+    const agent = await signIn(admin);
+    const album = (await agent.post('/api/albums').send({ name: 'Perdu', visibility: 'public' })).body.data;
+    await agent.post(`/api/albums/${album.id}/photos`).attach('photos', await jpeg(), { filename: 'a.jpg', contentType: 'image/jpeg' });
+    const kept = (await agent.post('/api/albums').send({ name: 'Gardé', visibility: 'public' })).body.data;
+    await agent.post(`/api/albums/${kept.id}/photos`).attach('photos', await jpeg(), { filename: 'b.jpg', contentType: 'image/jpeg' });
+    fs.rmSync(path.join(tempDir, 'Pictures', 'Perdu'), { recursive: true });
+
+    const status = await agent.get('/api/admin/storage');
+    expect(status.body.data).toMatchObject({ driver: 'local', photos: 2, missing: 1 });
+
+    const pruned = await agent.post('/api/admin/storage/prune').send({ deleteEmptyAlbums: true });
+    expect(pruned.body.data).toEqual({ removedPhotos: 1, removedAlbums: 1 });
+    expect((await agent.get('/api/admin/storage')).body.data).toMatchObject({ photos: 1, missing: 0 });
+    expect((await request(app).get('/api/albums')).body.data.map((a) => a.name)).toEqual(['Gardé']);
+  });
+
+  it('is reserved to administrators', async () => {
+    const agent = await signIn(await createUser({ permissions: ['UPLOAD_PHOTOS'] }));
+    expect((await agent.get('/api/admin/storage')).status).toBe(403);
   });
 });

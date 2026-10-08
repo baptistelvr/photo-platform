@@ -82,9 +82,6 @@ function assertConfigured() {
   if (env.IS_VERCEL && !isPostgres) {
     throw new ConfigError('Sur Vercel, DATABASE_URL (ou POSTGRES_URL) doit pointer vers une base Postgres.');
   }
-  if (env.IS_VERCEL && !env.HAS_BLOB_CREDENTIALS) {
-    throw new ConfigError('Stockage manquant : reliez un magasin Vercel Blob privé au projet.');
-  }
 }
 
 async function close() {

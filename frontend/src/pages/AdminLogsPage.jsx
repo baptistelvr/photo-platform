@@ -13,6 +13,7 @@ function describe(log) {
   const type = OBJECT_LABELS[log.objectType] || log.objectType;
   const name = meta.name || meta.album || meta.email;
   if (log.action === 'PHOTO_UPLOAD') return `${pluralize(meta.count || 0, 'photo')} · ${name || `album #${log.objectId}`}`;
+  if (log.action === 'STORAGE_PRUNE') return `${pluralize(meta.photos || 0, 'photo introuvable retirée', 'photos introuvables retirées')}${meta.albums ? ` · ${pluralize(meta.albums, 'album vide', 'albums vides')}` : ''}`;
   if (log.action === 'PHOTO_MOVE') return `Photo #${log.objectId} · album #${meta.from} → #${meta.to}`;
   return name ? `${type} · ${name}` : `${type} #${log.objectId ?? '—'}`;
 }

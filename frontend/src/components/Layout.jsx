@@ -1,5 +1,5 @@
 import {
-  Aperture, ChevronDown, FolderCog, Images, LogIn, LogOut, Menu, Moon, RefreshCw, ScrollText, Sun,
+  Aperture, ChevronDown, FolderCog, HardDrive, Images, LogIn, LogOut, Menu, Moon, RefreshCw, ScrollText, Sun,
   TriangleAlert, Upload, UserRound, Users, X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -17,9 +17,10 @@ function useNavigation() {
     hasPermission('UPLOAD_PHOTOS') && { to: '/upload', label: 'Importer', icon: Upload },
   ].filter(Boolean);
   const admin = [
-    hasAnyPermission(['CREATE_ALBUMS', 'EDIT_ALBUMS', 'DELETE_ALBUMS']) && { to: '/manage/albums', label: 'Albums', icon: FolderCog },
+    hasAnyPermission(['CREATE_ALBUMS', 'EDIT_ALBUMS', 'DELETE_ALBUMS']) && { to: '/manage/albums', label: 'Collections et albums', icon: FolderCog },
     hasPermission('MANAGE_USERS') && { to: '/manage/users', label: 'Utilisateurs', icon: Users },
     hasPermission('MANAGE_PERMISSIONS') && { to: '/admin/logs', label: 'Journal d’activité', icon: ScrollText },
+    hasPermission('MANAGE_PERMISSIONS') && { to: '/admin/storage', label: 'Stockage', icon: HardDrive },
   ].filter(Boolean);
   return { main, admin };
 }
