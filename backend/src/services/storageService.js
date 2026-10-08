@@ -136,6 +136,11 @@ function assertConfigured() {
       .filter((key) => !env.S3[key])
       .map((key) => ({ endpoint: 'S3_ENDPOINT', accessKeyId: 'S3_ACCESS_KEY_ID', secretAccessKey: 'S3_SECRET_ACCESS_KEY' })[key]);
     if (missing.length) throw new ConfigError(`Stockage S3 incomplet : ajoutez ${missing.join(', ')}.`);
+    try {
+      new URL(env.S3.endpoint);
+    } catch {
+      throw new ConfigError(`S3_ENDPOINT invalide (« ${env.S3.endpoint} ») : indiquez par exemple https://s3.eu-central-003.backblazeb2.com.`);
+    }
     return;
   }
   if (env.IS_VERCEL) {
