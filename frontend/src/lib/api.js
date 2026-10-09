@@ -80,6 +80,7 @@ export const api = {
 
   listCollections: () => request('/api/collections'),
   getCollection: (id) => request(`/api/collections/${id}`),
+  listCollectionPhotos: (id) => request(`/api/collections/${id}/photos`),
   createCollection: (body) => request('/api/collections', { method: 'POST', body }),
   updateCollection: (id, body) => request(`/api/collections/${id}`, { method: 'PUT', body }),
   deleteCollection: (id) => request(`/api/collections/${id}`, { method: 'DELETE' }),

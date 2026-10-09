@@ -55,6 +55,19 @@ async function listAlbumPhotos(albumId) {
   return rows;
 }
 
+/** Photos of several albums at once, newest first within each album (same order as listAlbumPhotos). */
+async function listPhotosOfAlbums(albumIds) {
+  const photos = [];
+  for (let i = 0; i < albumIds.length; i += 500) {
+    const ids = albumIds.slice(i, i + 500);
+    const { rows } = await query(`SELECT id, album_id AS "albumId", original_name AS "originalName", size, width, height,
+      created_at AS "createdAt" FROM photos WHERE album_id IN (${ids.map((_, n) => `$${n + 1}`).join(', ')})
+      ORDER BY created_at DESC, id DESC`, ids);
+    photos.push(...rows);
+  }
+  return photos;
+}
+
 async function getAlbumAccessUserIds(albumId) {
   const { rows } = await query('SELECT user_id AS "userId" FROM album_access WHERE album_id = $1', [albumId]);
   return rows.map((row) => row.userId);
@@ -106,6 +119,7 @@ module.exports = {
   clearCoverPhoto,
   deleteAlbum,
   listAlbumPhotos,
+  listPhotosOfAlbums,
   getAlbumAccessUserIds,
   setAlbumAccess,
   setUserAlbumAccess,

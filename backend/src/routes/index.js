@@ -33,6 +33,7 @@ router.post('/auth/change-password', requireAuth, authController.changePassword)
 router.get('/collections', collectionController.listCollections);
 router.post('/collections', requirePermission(PERMISSIONS.CREATE_ALBUMS), collectionController.createCollection);
 router.get('/collections/:id', collectionController.getCollection);
+router.get('/collections/:id/photos', collectionController.listCollectionPhotos);
 router.put('/collections/:id', requirePermission(PERMISSIONS.EDIT_ALBUMS), collectionController.updateCollection);
 router.delete('/collections/:id', requirePermission(PERMISSIONS.DELETE_ALBUMS), collectionController.deleteCollection);
 

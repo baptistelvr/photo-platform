@@ -1,5 +1,5 @@
 import {
-  ChevronLeft, ChevronRight, Download, FolderInput, Maximize, Minimize, Star, Trash2, X, ZoomIn, ZoomOut,
+  ChevronLeft, ChevronRight, Download, FolderInput, Maximize, Minimize, Play, Star, Trash2, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -105,6 +105,11 @@ export function Lightbox({ photos, index, onIndexChange, onClose, coverPhotoId, 
         <button type="button" className="icon-btn" onClick={() => setZoomed((z) => !z)} aria-label={zoomed ? 'Dézoomer' : 'Zoomer'} title={zoomed ? 'Dézoomer' : 'Zoomer'}>
           {zoomed ? <ZoomOut /> : <ZoomIn />}
         </button>
+        {actions.onSlideshow && (
+          <button type="button" className="icon-btn" onClick={() => actions.onSlideshow(photo)} aria-label="Diaporama à partir de cette photo" title="Diaporama">
+            <Play />
+          </button>
+        )}
         <a className="icon-btn" href={photoUrl(photo.id, { download: true })} download aria-label="Télécharger l’original" title="Télécharger l’original">
           <Download />
         </a>
