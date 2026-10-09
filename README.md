@@ -115,6 +115,14 @@ Quand on glisse un seul dossier qui contient lui-même les collections (comme «
 
 Les photos de plus de 1 Mo sont réduites dans le navigateur avant l'envoi (2560 px maximum, orientation corrigée). Vos fichiers d'origine ne sont pas modifiés. L'envoi se fait trois photos à la fois, avec nouvel essai automatique en cas de coupure ; si l'import est interrompu, il suffit de glisser à nouveau le même dossier : les photos déjà présentes dans l'album (même nom de fichier) sont sautées. Laissez l'onglet ouvert pendant l'envoi.
 
+## Diaporama
+
+Chaque album et chaque collection a un bouton **Diaporama** (on peut aussi le lancer depuis la visionneuse, à partir de la photo affichée). On choisit la durée d'affichage de chaque photo, de 1 à 120 secondes, l'ordre (normal ou aléatoire), la lecture en boucle et le plein écran. Ces réglages sont mémorisés dans le navigateur.
+
+Les photos s'enchaînent en fondu, et une photo n'apparaît qu'une fois entièrement chargée : pas d'image coupée en deux sur une connexion lente. Les deux suivantes sont préchargées pendant l'affichage de la photo en cours. Au clavier : Espace pour la pause, flèches gauche et droite pour naviguer, + et − pour la durée, F pour le plein écran, Échap pour quitter. Sur mobile, on balaie l'écran pour passer d'une photo à l'autre. Pour une collection, seules les photos des albums que la personne a le droit de voir sont montrées (`GET /api/collections/:id/photos`).
+
+Chaque photo affichée est une lecture dans le bucket. Avec Backblaze B2 en offre gratuite (2 500 lectures par jour), un très long diaporama sur une grosse collection peut donc entamer sérieusement le quota du jour.
+
 ## Page d'accueil
 
 Le fond de l'accueil est un mur de photos en 3D qui défile en continu. Les photos sont tirées au hasard parmi les **albums publics uniquement** (`GET /api/photos/showcase`) ; un album protégé n'y apparaît jamais, même pour un administrateur connecté. Un clic sur une photo l'ouvre dans sa visionneuse. Le mur suit légèrement la souris, s'arrête au survol d'une rangée ou quand il sort de l'écran, et reste immobile si le système demande de réduire les animations.

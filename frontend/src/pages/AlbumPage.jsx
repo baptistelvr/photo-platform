@@ -1,11 +1,12 @@
 import {
-  Calendar, Globe, ImagePlus, Images, KeyRound, Link2, Lock, LogIn, Pencil, Star, Trash2, Upload,
+  Calendar, Globe, ImagePlus, Images, KeyRound, Link2, Lock, LogIn, Pencil, Play, Star, Trash2, Upload,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlbumFormModal } from '../components/AlbumFormModal';
 import { Lightbox } from '../components/Lightbox';
 import { Modal } from '../components/Modal';
+import { useSlideshow } from '../components/Slideshow';
 import { EmptyState, ErrorState, PageHeader, PageLoader, PasswordInput, Spinner } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirm } from '../hooks/useConfirm';
@@ -185,6 +186,7 @@ export function AlbumPage() {
   const setOpenPhoto = useCallback((photo) => {
     setSearchParams(photo ? { photo: String(photo.id) } : {}, { replace: true });
   }, [setSearchParams]);
+  const slideshow = useSlideshow({ title: album?.name || '', count: photos.length, loadPhotos: async () => photos });
 
   if (status.state === 'loading') return <PageLoader />;
   if (status.state === 'locked') return <LockedAlbum code={status.code} onUnlock={load} />;
@@ -236,6 +238,10 @@ export function AlbumPage() {
         toast.error(error.message);
       }
     } : undefined,
+    onSlideshow: (photo) => {
+      setOpenPhoto(null);
+      slideshow.open(photo.id);
+    },
     onMove: hasPermission('MOVE_PHOTOS') ? (photo) => setMoving(photo) : undefined,
     onDelete: hasPermission('DELETE_PHOTOS') ? async (photo) => {
       const ok = await confirm({
@@ -292,6 +298,9 @@ export function AlbumPage() {
         subtitle={album.description || undefined}
         actions={(
           <>
+            {photos.length > 0 && (
+              <button type="button" className="btn" onClick={() => slideshow.open()}><Play aria-hidden="true" /> Diaporama</button>
+            )}
             <button type="button" className="btn" onClick={copyLink}><Link2 aria-hidden="true" /> Copier le lien</button>
             {canEdit && (
               <button type="button" className="btn" onClick={() => setEditing(true)}><Pencil aria-hidden="true" /> Modifier</button>
@@ -358,6 +367,7 @@ export function AlbumPage() {
         onSaved={(updated) => setAlbum((a) => ({ ...a, ...updated }))}
       />
       <MovePhotoModal photo={moving} currentAlbumId={album.id} onClose={() => setMoving(null)} onMoved={removePhoto} />
+      {slideshow.element}
     </>
   );
 }

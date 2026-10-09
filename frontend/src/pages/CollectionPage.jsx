@@ -1,9 +1,10 @@
-import { FolderPlus, Images, Library, Pencil, Trash2, Upload } from 'lucide-react';
+import { FolderPlus, Images, Library, Pencil, Play, Trash2, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AlbumGrid } from '../components/AlbumCard';
 import { AlbumFormModal } from '../components/AlbumFormModal';
 import { CollectionFormModal } from '../components/CollectionFormModal';
+import { useSlideshow } from '../components/Slideshow';
 import { EmptyState, ErrorState, PageHeader, PageLoader } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirm } from '../hooks/useConfirm';
@@ -21,6 +22,11 @@ export function CollectionPage() {
   const { data: collection, loading, error, reload, setData } = useFetch(() => api.getCollection(id), [id, user?.id]);
   const [editing, setEditing] = useState(false);
   const [creatingAlbum, setCreatingAlbum] = useState(false);
+  const slideshow = useSlideshow({
+    title: collection?.name || '',
+    count: collection?.photosCount || 0,
+    loadPhotos: () => api.listCollectionPhotos(id),
+  });
 
   if (loading && !collection) return <PageLoader />;
   if (error && !collection) {
@@ -59,6 +65,9 @@ export function CollectionPage() {
         subtitle={collection.description || undefined}
         actions={(
           <>
+            {collection.photosCount > 0 && (
+              <button type="button" className="btn" onClick={() => slideshow.open()}><Play aria-hidden="true" /> Diaporama</button>
+            )}
             {hasPermission('EDIT_ALBUMS') && (
               <button type="button" className="btn" onClick={() => setEditing(true)}><Pencil aria-hidden="true" /> Modifier</button>
             )}
@@ -112,6 +121,7 @@ export function CollectionPage() {
         onClose={() => setCreatingAlbum(false)}
         onSaved={(album) => navigate(`/albums/${album.id}`)}
       />
+      {slideshow.element}
     </>
   );
 }

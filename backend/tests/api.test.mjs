@@ -308,6 +308,32 @@ describe('collections', () => {
     expect((await agent.get('/api/collections')).body.data.map((c) => c.id)).toContain(empty.id);
   });
 
+  it('lists the photos of a collection for the slideshow, without albums the viewer cannot open', async () => {
+    const admin = await createUser({ role: 'main_admin' });
+    const agent = await signIn(admin);
+    const collection = (await agent.post('/api/collections').send({ name: 'Cuba' })).body.data;
+    const add = async (name, visibility, files) => {
+      const album = (await agent.post('/api/albums').send({ name, visibility, collectionId: collection.id, ...(visibility === 'protected' ? { password: 'secret-album' } : {}) })).body.data;
+      for (const file of files) {
+        await agent.post(`/api/albums/${album.id}/photos`).attach('photos', await jpeg(), { filename: file, contentType: 'image/jpeg' });
+      }
+      return album;
+    };
+    await add('Trinidad', 'public', ['plaza.jpg']);
+    await add('Bayamo', 'public', ['casa.jpg', 'trova.jpg']);
+    const secret = await add('Privé', 'protected', ['secret.jpg']);
+
+    const anonymous = await request(app).get(`/api/collections/${collection.id}/photos`);
+    expect(anonymous.status).toBe(200);
+    // Albums by name (Bayamo before Trinidad), newest photo first inside each album.
+    expect(anonymous.body.data.map((p) => `${p.albumName}/${p.originalName}`)).toEqual(['Bayamo/trova.jpg', 'Bayamo/casa.jpg', 'Trinidad/plaza.jpg']);
+    expect(anonymous.body.data[0]).not.toHaveProperty('originalPath');
+
+    const everything = await agent.get(`/api/collections/${collection.id}/photos`);
+    expect(everything.body.data.filter((p) => p.albumId === secret.id)).toHaveLength(1);
+    expect((await request(app).get('/api/collections/999999/photos')).status).toBe(404);
+  });
+
   it('moves photo files when a collection is renamed and deletes everything with it', async () => {
     const admin = await createUser({ role: 'main_admin' });
     const agent = await signIn(admin);

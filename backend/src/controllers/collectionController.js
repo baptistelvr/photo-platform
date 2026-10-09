@@ -6,7 +6,7 @@ const { PERMISSIONS } = require('../constants/permissions');
 const { HttpError } = require('../utils/httpError');
 const { parseId } = require('../utils/params');
 const { collectionSchema } = require('../utils/schemas');
-const { publicAlbum, publicCollection } = require('../utils/serializers');
+const { publicAlbum, publicCollection, publicPhoto } = require('../utils/serializers');
 const { destroyAlbum, relocateAlbumPhotos } = require('./albumController');
 
 const MANAGE = [PERMISSIONS.CREATE_ALBUMS, PERMISSIONS.EDIT_ALBUMS, PERMISSIONS.DELETE_ALBUMS];
@@ -73,6 +73,30 @@ async function getCollection(req, res, next) {
   }
 }
 
+/**
+ * Every photo the viewer may see in the collection, album by album in the same
+ * order as the collection page. Used by the slideshow, in a single request.
+ */
+async function listCollectionPhotos(req, res, next) {
+  try {
+    const collection = await loadCollection(req.params.id);
+    const albums = [...((await visibleAlbumsByCollection(req)).get(collection.id) || [])].sort((a, b) => byName(a.name, b.name));
+    if (!albums.length && !canManage(req.user)) throw new HttpError(404, 'NOT_FOUND', 'Collection introuvable');
+
+    const byAlbum = new Map(albums.map((album) => [album.id, []]));
+    for (const photo of await albumRepository.listPhotosOfAlbums(albums.map((album) => album.id))) {
+      byAlbum.get(photo.albumId)?.push(photo);
+    }
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      success: true,
+      data: albums.flatMap((album) => byAlbum.get(album.id).map((photo) => ({ ...publicPhoto(photo), albumName: album.name }))),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function createCollection(req, res, next) {
   try {
     const payload = collectionSchema.parse(req.body);
@@ -122,4 +146,6 @@ async function deleteCollection(req, res, next) {
   }
 }
 
-module.exports = { listCollections, getCollection, createCollection, updateCollection, deleteCollection };
+module.exports = {
+  listCollections, getCollection, listCollectionPhotos, createCollection, updateCollection, deleteCollection,
+};
