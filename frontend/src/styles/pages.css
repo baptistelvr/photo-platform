@@ -242,7 +242,12 @@ a.wall-tile:hover {
 
 .album-card {
   display: grid;
+  /* minmax(0, 1fr): a long album name must never widen the card past its
+     column (the 4:3 cover would grow with it and overlap its neighbours). */
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
   gap: 12px;
+  min-width: 0;
   color: inherit;
 }
 
@@ -302,8 +307,15 @@ a.wall-tile:hover {
 }
 
 .album-meta h3 {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
   font-size: 15.5px;
   font-weight: 600;
+  line-height: 1.35;
   letter-spacing: -0.01em;
 }
 
