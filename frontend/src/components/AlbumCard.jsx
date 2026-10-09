@@ -25,9 +25,16 @@ export function CoverImage({ photoId, alt = '', className }) {
   );
 }
 
-export function AlbumCard({ album }) {
+/** A link, or a plain block while the cards are being reordered. */
+function CardRoot({ to, className, asStatic, children }) {
+  if (asStatic) return <div className={className}>{children}</div>;
+  return <Link to={to} className={className}>{children}</Link>;
+}
+
+/** `corner` goes in the top right corner of the cover (badge or button). */
+export function AlbumCard({ album, asStatic = false, corner = null }) {
   return (
-    <Link to={`/albums/${album.id}`} className="album-card">
+    <CardRoot to={`/albums/${album.id}`} className="album-card" asStatic={asStatic}>
       <div className="album-cover">
         <CoverImage photoId={album.coverPhotoId} />
         {album.visibility === 'protected' && (
@@ -35,39 +42,41 @@ export function AlbumCard({ album }) {
             <Lock aria-hidden="true" /> Protégé
           </span>
         )}
+        {corner && <div className="cover-corner">{corner}</div>}
       </div>
       <div className="album-meta">
         <h3 title={album.name}>{album.name}</h3>
         <p>{pluralize(album.photosCount, 'photo')}</p>
       </div>
-    </Link>
+    </CardRoot>
   );
 }
 
 /** A collection shown as a small stack of prints, to tell it apart from an album. */
-export function CollectionCard({ collection }) {
+export function CollectionCard({ collection, asStatic = false, corner = null }) {
   return (
-    <Link to={`/collections/${collection.id}`} className="album-card collection-card">
+    <CardRoot to={`/collections/${collection.id}`} className="album-card collection-card" asStatic={asStatic}>
       <div className="album-cover">
         <CoverImage photoId={collection.coverPhotoId} />
         <span className="cover-badge">
           <Library aria-hidden="true" /> {pluralize(collection.albumsCount, 'album')}
         </span>
+        {corner && <div className="cover-corner">{corner}</div>}
       </div>
       <div className="album-meta">
         <h3 title={collection.name}>{collection.name}</h3>
         <p>{pluralize(collection.photosCount, 'photo')}</p>
       </div>
-    </Link>
+    </CardRoot>
   );
 }
 
-export function CollectionGrid({ collections, loading, skeletons = 6 }) {
+export function CollectionGrid({ collections, loading, skeletons = 6, corner }) {
   return (
     <div className="album-grid">
       {loading && !collections
         ? Array.from({ length: skeletons }, (_, i) => <AlbumCardSkeleton key={i} />)
-        : collections.map((collection) => <CollectionCard key={collection.id} collection={collection} />)}
+        : collections.map((collection) => <CollectionCard key={collection.id} collection={collection} corner={corner?.(collection)} />)}
     </div>
   );
 }

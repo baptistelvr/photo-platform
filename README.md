@@ -98,6 +98,16 @@ Deux niveaux : une **collection** regroupe des **albums**, et un album contient 
 
 Supprimer une collection supprime ses albums et leurs photos. La renommer déplace les fichiers dans le stockage, comme pour un album.
 
+## Ordre, couvertures et page d'accueil
+
+Les personnes qui ont la permission `EDIT_ALBUMS` voient un bouton **Réorganiser** sur la page des collections, sur chaque collection et sur chaque album. On glisse les cartes ou les photos à la souris, au doigt (après un bref appui, pour que la page défile toujours normalement) ou au clavier (Espace pour saisir, flèches, Espace pour déposer). Chaque changement est enregistré tout de suite.
+
+L'ordre a un effet direct sur les couvertures : la première photo d'un album est sa couverture, et le premier album d'une collection donne la sienne à la collection. Dans un album, un bouton permet de passer une photo en tête sans la faire glisser sur des centaines d'autres, et le menu **Trier** range tout d'un coup par nom de fichier (IMG_2 avant IMG_10) ou par ordre d'import. L'étoile de la visionneuse fait la même chose : elle met la photo en premier.
+
+Sur la page des collections, en mode Réorganiser, le bouton **Accueil** de chaque carte choisit les collections montrées sur la page d'accueil, dans l'ordre de la liste. Tant qu'aucune n'est cochée, l'accueil montre les six premières. La case existe aussi dans la fenêtre de modification d'une collection.
+
+Les photos importées s'ajoutent à la fin de leur album, et un album créé ou déplacé va à la fin de sa collection. Au premier démarrage de cette version, la migration a repris l'ordre affiché jusque-là : photos les plus récentes d'abord, sauf une couverture choisie à la main, qui passe en tête, et albums et collections par ordre alphabétique.
+
 ## Importer tout un dossier
 
 Sur la page **Importer**, glissez un dossier (ou cliquez sur « choisissez un dossier »). Le premier niveau de sous-dossiers donne les collections, le second les albums :

@@ -32,6 +32,8 @@ router.post('/auth/change-password', requireAuth, authController.changePassword)
 // Collections (first level) group albums (second level)
 router.get('/collections', collectionController.listCollections);
 router.post('/collections', requirePermission(PERMISSIONS.CREATE_ALBUMS), collectionController.createCollection);
+// Declared before /collections/:id so that "order" is not taken for an id.
+router.put('/collections/order', requirePermission(PERMISSIONS.EDIT_ALBUMS), collectionController.reorderCollections);
 router.get('/collections/:id', collectionController.getCollection);
 router.get('/collections/:id/photos', collectionController.listCollectionPhotos);
 router.put('/collections/:id', requirePermission(PERMISSIONS.EDIT_ALBUMS), collectionController.updateCollection);
@@ -40,10 +42,12 @@ router.delete('/collections/:id', requirePermission(PERMISSIONS.DELETE_ALBUMS), 
 // Albums
 router.get('/albums', albumController.listAlbums);
 router.post('/albums', requirePermission(PERMISSIONS.CREATE_ALBUMS), albumController.createAlbum);
+router.put('/albums/order', requirePermission(PERMISSIONS.EDIT_ALBUMS), albumController.reorderAlbums);
 router.get('/albums/:id', albumController.getAlbum);
 router.put('/albums/:id', requirePermission(PERMISSIONS.EDIT_ALBUMS), albumController.updateAlbum);
 router.delete('/albums/:id', requirePermission(PERMISSIONS.DELETE_ALBUMS), albumController.deleteAlbum);
 router.get('/albums/:id/photos', albumController.listAlbumPhotos);
+router.put('/albums/:id/photos/order', requirePermission(PERMISSIONS.EDIT_ALBUMS), albumController.reorderPhotos);
 router.post(
   '/albums/:id/photos',
   requirePermission(PERMISSIONS.UPLOAD_PHOTOS),

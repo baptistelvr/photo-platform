@@ -29,7 +29,13 @@ const albumSchema = z.object({
 const collectionSchema = z.object({
   name: trimmed(120).min(1, 'Nom requis'),
   description: trimmed(1000).optional().or(z.literal('')),
+  featured: z.boolean().optional(),
 });
+
+// Ids in their new order. Duplicates are refused.
+const orderIds = z.array(id).max(20000).refine((ids) => new Set(ids).size === ids.length, 'Identifiants en double');
+const orderSchema = z.object({ ids: orderIds });
+const albumOrderSchema = z.object({ collectionId: id.nullable(), ids: orderIds });
 
 const storagePruneSchema = z.object({
   deleteEmptyAlbums: z.boolean().default(false),
@@ -59,6 +65,8 @@ module.exports = {
   changePasswordSchema,
   albumSchema,
   collectionSchema,
+  orderSchema,
+  albumOrderSchema,
   storagePruneSchema,
   photoMoveSchema,
   userSchema,

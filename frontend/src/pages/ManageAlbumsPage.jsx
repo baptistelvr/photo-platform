@@ -1,4 +1,4 @@
-import { ExternalLink, FolderPlus, Globe, Images, Library, Lock, Pencil, Search, Trash2 } from 'lucide-react';
+import { ExternalLink, FolderPlus, Globe, House, Images, Library, Lock, Pencil, Search, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CoverImage } from '../components/AlbumCard';
@@ -11,8 +11,6 @@ import { useFetch } from '../hooks/useFetch';
 import { useToast } from '../hooks/useToast';
 import { api } from '../lib/api';
 import { formatDate, pluralize } from '../lib/format';
-
-const byName = (a, b) => a.localeCompare(b, 'fr', { numeric: true });
 
 function AlbumRow({ album, canEdit, canDelete, onEdit, onDelete }) {
   return (
@@ -64,17 +62,17 @@ export function ManageAlbumsPage() {
     collections.reload();
   };
 
-  // One section per collection (empty ones included), albums without collection last.
+  // One section per collection (empty ones included), in the order chosen by editors, albums without collection last.
   const sections = useMemo(() => {
     if (!albums) return [];
     const q = query.trim().toLowerCase();
     const hit = (...values) => !q || values.join(' ').toLowerCase().includes(q);
-    const list = [...(collections.data || [])].sort((a, b) => byName(a.name, b.name)).map((collection) => {
+    const list = (collections.data || []).map((collection) => {
       const own = albums.filter((a) => a.collectionId === collection.id);
       const nameHit = hit(collection.name);
-      return { collection, albums: own.filter((a) => nameHit || hit(a.name)).sort((a, b) => byName(a.name, b.name)), visible: nameHit || own.some((a) => hit(a.name)) };
+      return { collection, albums: own.filter((a) => nameHit || hit(a.name)), visible: nameHit || own.some((a) => hit(a.name)) };
     });
-    const loose = albums.filter((a) => !a.collectionId && hit(a.name)).sort((a, b) => byName(a.name, b.name));
+    const loose = albums.filter((a) => !a.collectionId && hit(a.name));
     if (loose.length) list.push({ collection: null, albums: loose, visible: true });
     return list.filter((section) => section.visible);
   }, [albums, collections.data, query]);
@@ -156,6 +154,7 @@ export function ManageAlbumsPage() {
                   {collection
                     ? <Link to={`/collections/${collection.id}`}>{collection.name}</Link>
                     : 'Sans collection'}
+                  {collection?.featured && <span className="badge" title="Affichée sur la page d’accueil"><House aria-hidden="true" /> Accueil</span>}
                 </h2>
                 {collection && (
                   <div className="row-actions">
@@ -171,7 +170,7 @@ export function ManageAlbumsPage() {
                       </button>
                     )}
                     {canEdit && (
-                      <button type="button" className="icon-btn sm" onClick={() => setCollectionModal({ open: true, collection })} aria-label={`Renommer ${collection.name}`} title="Renommer la collection"><Pencil /></button>
+                      <button type="button" className="icon-btn sm" onClick={() => setCollectionModal({ open: true, collection })} aria-label={`Modifier ${collection.name}`} title="Modifier la collection"><Pencil /></button>
                     )}
                     {canDelete && (
                       <button type="button" className="icon-btn sm danger" onClick={() => removeCollection(collection)} aria-label={`Supprimer ${collection.name}`} title="Supprimer la collection"><Trash2 /></button>
