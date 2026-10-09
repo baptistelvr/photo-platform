@@ -37,7 +37,7 @@ export function AlbumCard({ album }) {
         )}
       </div>
       <div className="album-meta">
-        <h3 className="truncate">{album.name}</h3>
+        <h3 title={album.name}>{album.name}</h3>
         <p>{pluralize(album.photosCount, 'photo')}</p>
       </div>
     </Link>
@@ -55,7 +55,7 @@ export function CollectionCard({ collection }) {
         </span>
       </div>
       <div className="album-meta">
-        <h3 className="truncate">{collection.name}</h3>
+        <h3 title={collection.name}>{collection.name}</h3>
         <p>{pluralize(collection.photosCount, 'photo')}</p>
       </div>
     </Link>
