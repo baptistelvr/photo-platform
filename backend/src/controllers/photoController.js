@@ -1,7 +1,6 @@
 const multer = require('multer');
 const { pipeline } = require('node:stream/promises');
 const env = require('../config/env');
-const albumRepository = require('../repositories/albumRepository');
 const { addAuditLog } = require('../repositories/auditRepository');
 const photoRepository = require('../repositories/photoRepository');
 const { normalizeJpeg } = require('../services/imageService');
@@ -119,7 +118,6 @@ async function deletePhoto(req, res, next) {
     const photo = await loadPhoto(req.params.id);
     await storageService.deletePhotoFiles(photo);
     await photoRepository.deletePhoto(photo.id);
-    await albumRepository.clearCoverPhoto(photo.id);
     await addAuditLog({ actorId: req.user.id, action: 'PHOTO_DELETE', objectType: 'photo', objectId: String(photo.id), metadata: { name: photo.originalName }, ipAddress: req.ip });
     res.json({ success: true });
   } catch (error) {
@@ -140,7 +138,6 @@ async function movePhoto(req, res, next) {
 
     const paths = await storageService.movePhotoFiles(photo, targetAlbum);
     const moved = await photoRepository.movePhoto(photo.id, targetAlbum.id, paths);
-    await albumRepository.clearCoverPhoto(photo.id);
 
     await addAuditLog({ actorId: req.user.id, action: 'PHOTO_MOVE', objectType: 'photo', objectId: String(photo.id), metadata: { from: photo.albumId, to: targetAlbum.id }, ipAddress: req.ip });
     return res.json({ success: true, data: publicPhoto(moved) });

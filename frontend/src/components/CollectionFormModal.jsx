@@ -10,6 +10,7 @@ export function CollectionFormModal({ open, collection, onClose, onSaved }) {
   const editing = Boolean(collection);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [featured, setFeatured] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -17,6 +18,7 @@ export function CollectionFormModal({ open, collection, onClose, onSaved }) {
     if (!open) return;
     setName(collection?.name || '');
     setDescription(collection?.description || '');
+    setFeatured(Boolean(collection?.featured));
     setError('');
   }, [open, collection]);
 
@@ -24,7 +26,7 @@ export function CollectionFormModal({ open, collection, onClose, onSaved }) {
     setBusy(true);
     setError('');
     try {
-      const body = { name: name.trim(), description: description.trim() };
+      const body = { name: name.trim(), description: description.trim(), featured };
       const saved = editing ? await api.updateCollection(collection.id, body) : await api.createCollection(body);
       toast.success(editing ? 'Collection mise à jour' : `Collection « ${saved.name} » créée`);
       onSaved?.(saved);
@@ -61,6 +63,13 @@ export function CollectionFormModal({ open, collection, onClose, onSaved }) {
         <Field label="Description" htmlFor="collection-description" hint="Facultative">
           <textarea id="collection-description" className="textarea" rows={3} maxLength={1000} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
+        <label className="checkbox">
+          <input type="checkbox" checked={featured} onChange={(e) => setFeatured(e.target.checked)} />
+          <span>
+            Afficher sur la page d’accueil
+            <small>Si aucune collection n’est cochée, l’accueil montre les premières de la liste.</small>
+          </span>
+        </label>
         {editing && name.trim() && name.trim() !== collection.name && (
           <p className="field-hint">Les fichiers des photos seront déplacés vers le nouveau nom de dossier, cela peut prendre quelques secondes.</p>
         )}

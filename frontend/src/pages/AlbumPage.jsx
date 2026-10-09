@@ -1,21 +1,60 @@
 import {
-  Calendar, Globe, ImagePlus, Images, KeyRound, Link2, Lock, LogIn, Pencil, Play, Star, Trash2, Upload,
+  ArrowDownAZ, ArrowDownUp, ArrowUpToLine, ArrowUpZA, Calendar, ClockArrowDown, ClockArrowUp, FlipVertical2, Globe,
+  ImagePlus, Images, KeyRound, Link2, Lock, LogIn, Pencil, Play, Star, Trash2, Upload,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlbumFormModal } from '../components/AlbumFormModal';
+import { Dropdown } from '../components/Dropdown';
 import { Lightbox } from '../components/Lightbox';
 import { Modal } from '../components/Modal';
+import { ReorderBanner } from '../components/ReorderBanner';
 import { useSlideshow } from '../components/Slideshow';
+import { SortableGrid } from '../components/SortableGrid';
 import { EmptyState, ErrorState, PageHeader, PageLoader, PasswordInput, Spinner } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirm } from '../hooks/useConfirm';
+import { useOrderSaver } from '../hooks/useOrderSaver';
 import { useToast } from '../hooks/useToast';
 import { groupAlbumsByCollection } from '../lib/albums';
 import { api, thumbnailUrl } from '../lib/api';
+import { noDrag } from '../lib/noDrag';
 import { formatDate, pluralize } from '../lib/format';
 
 const LOCKED_CODES = new Set(['ALBUM_PASSWORD_REQUIRED', 'INVALID_ALBUM_PASSWORD']);
+
+const byFileName = new Intl.Collator('fr', { numeric: true, sensitivity: 'base' }).compare;
+const byImport = (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id;
+const SORTS = [
+  { key: 'name-asc', icon: ArrowDownAZ, label: 'Nom de fichier, de A à Z', sort: (list) => [...list].sort((a, b) => byFileName(a.originalName, b.originalName)) },
+  { key: 'name-desc', icon: ArrowUpZA, label: 'Nom de fichier, de Z à A', sort: (list) => [...list].sort((a, b) => byFileName(b.originalName, a.originalName)) },
+  { key: 'import-asc', icon: ClockArrowUp, label: 'Importées en premier d’abord', sort: (list) => [...list].sort(byImport) },
+  { key: 'import-desc', icon: ClockArrowDown, label: 'Importées en dernier d’abord', sort: (list) => [...list].sort((a, b) => byImport(b, a)) },
+  { key: 'reverse', icon: FlipVertical2, label: 'Inverser l’ordre actuel', sort: (list) => [...list].reverse() },
+];
+
+function ReorderTile({ photo, index, onFirst }) {
+  return (
+    <div className="reorder-tile">
+      <img src={thumbnailUrl(photo.id)} alt="" loading="lazy" decoding="async" draggable={false} />
+      <span className="tile-index">{index + 1}</span>
+      {index === 0 ? (
+        <span className="corner-badge tile-corner"><Star aria-hidden="true" /> Couverture</span>
+      ) : (
+        <button
+          type="button"
+          className="tile-first"
+          onClick={() => onFirst(photo)}
+          aria-label={`Mettre ${photo.originalName} en premier (couverture)`}
+          title="Mettre en premier (couverture)"
+          {...noDrag}
+        >
+          <ArrowUpToLine aria-hidden="true" />
+        </button>
+      )}
+    </div>
+  );
+}
 
 function GalleryItem({ photo, onOpen, isCover }) {
   const [loaded, setLoaded] = useState(false);
@@ -157,6 +196,7 @@ export function AlbumPage() {
   const [status, setStatus] = useState({ state: 'loading' });
   const [editing, setEditing] = useState(false);
   const [moving, setMoving] = useState(null);
+  const [reordering, setReordering] = useState(false);
 
   const load = useCallback(async (password) => {
     try {
@@ -180,6 +220,14 @@ export function AlbumPage() {
     setStatus({ state: 'loading' });
     load();
   }, [load, user?.id]);
+
+  const [orderStatus, saveOrder] = useOrderSaver(
+    (ids) => api.reorderPhotos(Number(id), ids),
+    (error) => {
+      toast.error(error.message);
+      load();
+    },
+  );
 
   const openId = Number(searchParams.get('photo'));
   const openIndex = openId ? photos.findIndex((p) => p.id === openId) : -1;
@@ -217,26 +265,32 @@ export function AlbumPage() {
 
   const canEdit = hasPermission('EDIT_ALBUMS');
   const removePhoto = (photo) => {
-    setPhotos((list) => list.filter((p) => p.id !== photo.id));
-    setAlbum((a) => ({
-      ...a,
-      photosCount: a.photosCount - 1,
-      customCoverPhotoId: a.customCoverPhotoId === photo.id ? null : a.customCoverPhotoId,
-    }));
+    const rest = photos.filter((p) => p.id !== photo.id);
+    setPhotos(rest);
+    setAlbum((a) => ({ ...a, photosCount: a.photosCount - 1, coverPhotoId: rest[0]?.id ?? null }));
     setOpenPhoto(null);
   };
 
+  // The first photo is the cover: every change of order is saved right away.
+  const reorder = (list) => {
+    setPhotos(list);
+    setAlbum((a) => ({ ...a, coverPhotoId: list[0]?.id ?? null }));
+    saveOrder(list.map((p) => p.id));
+  };
+  const moveToFront = (photo) => reorder([photo, ...photos.filter((p) => p.id !== photo.id)]);
+  const applySort = async ({ label, sort }) => {
+    const ok = await confirm({
+      title: 'Trier les photos ?',
+      message: `Les ${pluralize(photos.length, 'photo')} seront classées ainsi : ${label.toLowerCase()}. L’ordre actuel sera remplacé.`,
+      confirmLabel: 'Trier',
+    });
+    if (ok) reorder(sort(photos));
+  };
+
   const lightboxActions = {
-    onSetCover: canEdit ? async (photo) => {
-      try {
-        const updated = await api.updateAlbum(album.id, {
-          name: album.name, description: album.description, visibility: album.visibility, coverPhotoId: photo.id,
-        });
-        setAlbum((a) => ({ ...a, ...updated }));
-        toast.success('Couverture mise à jour');
-      } catch (error) {
-        toast.error(error.message);
-      }
+    onSetCover: canEdit ? (photo) => {
+      moveToFront(photo);
+      toast.success('Photo placée en premier : c’est la couverture de l’album');
     } : undefined,
     onSlideshow: (photo) => {
       setOpenPhoto(null);
@@ -296,8 +350,11 @@ export function AlbumPage() {
           : { to: '/collections', label: 'Collections' }}
         title={album.name}
         subtitle={album.description || undefined}
-        actions={(
+        actions={!reordering && (
           <>
+            {canEdit && photos.length > 1 && (
+              <button type="button" className="btn" onClick={() => setReordering(true)}><ArrowDownUp aria-hidden="true" /> Réorganiser</button>
+            )}
             {photos.length > 0 && (
               <button type="button" className="btn" onClick={() => slideshow.open()}><Play aria-hidden="true" /> Diaporama</button>
             )}
@@ -326,7 +383,44 @@ export function AlbumPage() {
         </div>
       </PageHeader>
 
-      {!photos.length ? (
+      {reordering ? (
+        <>
+          <ReorderBanner
+            status={orderStatus}
+            onDone={() => setReordering(false)}
+            extra={(
+              <Dropdown
+                label="Trier automatiquement"
+                trigger={(props) => <button type="button" className="btn" {...props}><ArrowDownAZ aria-hidden="true" /> Trier</button>}
+              >
+                {(close) => SORTS.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    role="menuitem"
+                    className="menu-item"
+                    onClick={() => {
+                      close();
+                      applySort(option);
+                    }}
+                  >
+                    <option.icon aria-hidden="true" /> {option.label}
+                  </button>
+                ))}
+              </Dropdown>
+            )}
+          >
+            Glissez les photos pour changer leur ordre. La première est la couverture de l’album.
+          </ReorderBanner>
+          <SortableGrid
+            className="reorder-grid"
+            items={photos}
+            getLabel={(photo) => `Photo ${photo.originalName}`}
+            onReorder={reorder}
+            renderItem={(photo, index) => <ReorderTile photo={photo} index={index} onFirst={moveToFront} />}
+          />
+        </>
+      ) : !photos.length ? (
         <EmptyState
           icon={ImagePlus}
           title="Cet album est vide"
@@ -338,12 +432,12 @@ export function AlbumPage() {
         </EmptyState>
       ) : (
         <div className="gallery">
-          {photos.map((photo) => (
+          {photos.map((photo, index) => (
             <GalleryItem
               key={photo.id}
               photo={photo}
               onOpen={setOpenPhoto}
-              isCover={canEdit && album.customCoverPhotoId === photo.id}
+              isCover={canEdit && index === 0}
             />
           ))}
         </div>
@@ -355,7 +449,7 @@ export function AlbumPage() {
           index={openIndex}
           onIndexChange={(i) => setOpenPhoto(photos[i])}
           onClose={() => setOpenPhoto(null)}
-          coverPhotoId={album.customCoverPhotoId}
+          coverPhotoId={photos[0]?.id}
           actions={lightboxActions}
         />
       )}

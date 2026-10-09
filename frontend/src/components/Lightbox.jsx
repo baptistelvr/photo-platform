@@ -122,10 +122,12 @@ export function Lightbox({ photos, index, onIndexChange, onClose, coverPhotoId, 
           <button
             type="button"
             className={`icon-btn${isCover ? ' active' : ''}`}
-            onClick={() => actions.onSetCover(photo)}
+            onClick={() => {
+              if (!isCover) actions.onSetCover(photo);
+            }}
             aria-pressed={isCover}
-            aria-label={isCover ? 'Couverture actuelle' : 'Utiliser comme couverture'}
-            title={isCover ? 'Couverture actuelle' : 'Utiliser comme couverture'}
+            aria-label={isCover ? 'Couverture de l’album (première photo)' : 'Mettre en premier : devient la couverture'}
+            title={isCover ? 'Couverture de l’album (première photo)' : 'Mettre en premier (couverture)'}
           >
             <Star />
           </button>

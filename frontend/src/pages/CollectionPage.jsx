@@ -1,14 +1,17 @@
-import { FolderPlus, Images, Library, Pencil, Play, Trash2, Upload } from 'lucide-react';
+import { ArrowDownUp, FolderPlus, Images, Library, Pencil, Play, Star, Trash2, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { AlbumGrid } from '../components/AlbumCard';
+import { AlbumCard, AlbumGrid } from '../components/AlbumCard';
 import { AlbumFormModal } from '../components/AlbumFormModal';
 import { CollectionFormModal } from '../components/CollectionFormModal';
+import { ReorderBanner } from '../components/ReorderBanner';
+import { SortableGrid } from '../components/SortableGrid';
 import { useSlideshow } from '../components/Slideshow';
 import { EmptyState, ErrorState, PageHeader, PageLoader } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirm } from '../hooks/useConfirm';
 import { useFetch } from '../hooks/useFetch';
+import { useOrderSaver } from '../hooks/useOrderSaver';
 import { useToast } from '../hooks/useToast';
 import { api } from '../lib/api';
 import { pluralize } from '../lib/format';
@@ -22,6 +25,14 @@ export function CollectionPage() {
   const { data: collection, loading, error, reload, setData } = useFetch(() => api.getCollection(id), [id, user?.id]);
   const [editing, setEditing] = useState(false);
   const [creatingAlbum, setCreatingAlbum] = useState(false);
+  const [reordering, setReordering] = useState(false);
+  const [orderStatus, saveOrder] = useOrderSaver(
+    (ids) => api.reorderAlbums(Number(id), ids),
+    (err) => {
+      toast.error(err.message);
+      reload();
+    },
+  );
   const slideshow = useSlideshow({
     title: collection?.name || '',
     count: collection?.photosCount || 0,
@@ -57,16 +68,26 @@ export function CollectionPage() {
     }
   }
 
+  // The first album gives the collection its cover.
+  const moveAlbums = (albums) => {
+    setData((current) => ({ ...current, albums, coverPhotoId: albums.find((a) => a.coverPhotoId)?.coverPhotoId ?? null }));
+    saveOrder(albums.map((album) => album.id));
+  };
+  const canReorder = hasPermission('EDIT_ALBUMS') && collection.albums.length > 1;
+
   return (
     <>
       <PageHeader
         back={{ to: '/collections', label: 'Collections' }}
         title={collection.name}
         subtitle={collection.description || undefined}
-        actions={(
+        actions={!reordering && (
           <>
             {collection.photosCount > 0 && (
               <button type="button" className="btn" onClick={() => slideshow.open()}><Play aria-hidden="true" /> Diaporama</button>
+            )}
+            {canReorder && (
+              <button type="button" className="btn" onClick={() => setReordering(true)}><ArrowDownUp aria-hidden="true" /> Réorganiser</button>
             )}
             {hasPermission('EDIT_ALBUMS') && (
               <button type="button" className="btn" onClick={() => setEditing(true)}><Pencil aria-hidden="true" /> Modifier</button>
@@ -93,7 +114,26 @@ export function CollectionPage() {
         </div>
       </PageHeader>
 
-      {collection.albums.length ? (
+      {reordering ? (
+        <>
+          <ReorderBanner status={orderStatus} onDone={() => setReordering(false)}>
+            Glissez les albums pour changer leur ordre. Le premier album donne sa couverture à la collection.
+          </ReorderBanner>
+          <SortableGrid
+            className="album-grid"
+            items={collection.albums}
+            getLabel={(album) => `Album ${album.name}`}
+            onReorder={moveAlbums}
+            renderItem={(album, index) => (
+              <AlbumCard
+                album={album}
+                asStatic
+                corner={index === 0 && <span className="corner-badge"><Star aria-hidden="true" /> Couverture</span>}
+              />
+            )}
+          />
+        </>
+      ) : collection.albums.length ? (
         <AlbumGrid albums={collection.albums} />
       ) : (
         <EmptyState

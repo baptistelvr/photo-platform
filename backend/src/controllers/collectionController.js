@@ -1,3 +1,4 @@
+const db = require('../config/db');
 const albumRepository = require('../repositories/albumRepository');
 const { addAuditLog } = require('../repositories/auditRepository');
 const collectionRepository = require('../repositories/collectionRepository');
@@ -5,13 +6,13 @@ const { hasPermission, filterVisibleAlbums } = require('../services/accessServic
 const { PERMISSIONS } = require('../constants/permissions');
 const { HttpError } = require('../utils/httpError');
 const { parseId } = require('../utils/params');
-const { collectionSchema } = require('../utils/schemas');
+const { mergeOrder } = require('../utils/order');
+const { collectionSchema, orderSchema } = require('../utils/schemas');
 const { publicAlbum, publicCollection, publicPhoto } = require('../utils/serializers');
 const { destroyAlbum, relocateAlbumPhotos } = require('./albumController');
 
 const MANAGE = [PERMISSIONS.CREATE_ALBUMS, PERMISSIONS.EDIT_ALBUMS, PERMISSIONS.DELETE_ALBUMS];
 const canManage = (user) => MANAGE.some((permission) => hasPermission(user, permission));
-const byName = (a, b) => a.localeCompare(b, 'fr', { numeric: true, sensitivity: 'base' });
 
 async function visibleAlbumsByCollection(req) {
   const albums = await filterVisibleAlbums(req, await albumRepository.listAlbums());
@@ -64,8 +65,7 @@ async function getCollection(req, res, next) {
       success: true,
       data: {
         ...publicCollection(collection, albums),
-        // Albums usually mirror sub-folders: listed by name, like a file browser.
-        albums: [...albums].sort((a, b) => byName(a.name, b.name)).map((album) => publicAlbum(album)),
+        albums: albums.map((album) => publicAlbum(album)),
       },
     });
   } catch (error) {
@@ -80,7 +80,7 @@ async function getCollection(req, res, next) {
 async function listCollectionPhotos(req, res, next) {
   try {
     const collection = await loadCollection(req.params.id);
-    const albums = [...((await visibleAlbumsByCollection(req)).get(collection.id) || [])].sort((a, b) => byName(a.name, b.name));
+    const albums = (await visibleAlbumsByCollection(req)).get(collection.id) || [];
     if (!albums.length && !canManage(req.user)) throw new HttpError(404, 'NOT_FOUND', 'Collection introuvable');
 
     const byAlbum = new Map(albums.map((album) => [album.id, []]));
@@ -112,7 +112,10 @@ async function updateCollection(req, res, next) {
   try {
     const current = await loadCollection(req.params.id);
     const payload = collectionSchema.parse(req.body);
-    const updated = await collectionRepository.updateCollection(current.id, payload);
+    const updated = await collectionRepository.updateCollection(current.id, {
+      ...payload,
+      featured: payload.featured ?? Boolean(Number(current.featured)),
+    });
 
     // The collection name is part of every photo path inside it.
     if (updated.name !== current.name) {
@@ -124,6 +127,18 @@ async function updateCollection(req, res, next) {
     await addAuditLog({ actorId: req.user.id, action: 'COLLECTION_UPDATE', objectType: 'collection', objectId: String(current.id), metadata: { name: updated.name }, ipAddress: req.ip });
     const albums = (await visibleAlbumsByCollection(req)).get(current.id) || [];
     res.json({ success: true, data: publicCollection(updated, albums) });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** New order of all collections. The order of the collection page and of the home page follows it. */
+async function reorderCollections(req, res, next) {
+  try {
+    const payload = orderSchema.parse(req.body);
+    const ids = mergeOrder(payload.ids, (await collectionRepository.listCollections()).map((collection) => collection.id));
+    await db.transaction((run) => collectionRepository.reorderCollections(ids, run));
+    res.json({ success: true, data: { ids } });
   } catch (error) {
     next(error);
   }
@@ -147,5 +162,6 @@ async function deleteCollection(req, res, next) {
 }
 
 module.exports = {
-  listCollections, getCollection, listCollectionPhotos, createCollection, updateCollection, deleteCollection,
+  listCollections, getCollection, listCollectionPhotos, createCollection, updateCollection, reorderCollections,
+  deleteCollection,
 };

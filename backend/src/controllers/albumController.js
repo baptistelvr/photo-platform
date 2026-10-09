@@ -1,3 +1,4 @@
+const db = require('../config/db');
 const albumRepository = require('../repositories/albumRepository');
 const { addAuditLog } = require('../repositories/auditRepository');
 const collectionRepository = require('../repositories/collectionRepository');
@@ -8,7 +9,8 @@ const { PERMISSIONS } = require('../constants/permissions');
 const { HttpError } = require('../utils/httpError');
 const { parseId } = require('../utils/params');
 const { hashPassword } = require('../utils/password');
-const { albumSchema } = require('../utils/schemas');
+const { mergeOrder } = require('../utils/order');
+const { albumOrderSchema, albumSchema, orderSchema } = require('../utils/schemas');
 const { publicAlbum, publicPhoto } = require('../utils/serializers');
 
 const accessErrors = {
@@ -129,12 +131,12 @@ async function updateAlbum(req, res, next) {
     if (payload.visibility === 'public' || payload.removePassword) passwordHash = null;
     else if (payload.password) passwordHash = await hashPassword(payload.password);
 
-    let coverPhotoId = current.coverPhotoId;
-    if (payload.coverPhotoId === null) coverPhotoId = null;
+    // The cover is the first photo: choosing one moves it to the front.
     if (payload.coverPhotoId) {
       const cover = await photoRepository.getPhotoById(payload.coverPhotoId);
       if (!cover || cover.albumId !== current.id) throw new HttpError(400, 'INVALID_COVER', 'La couverture doit être une photo de cet album');
-      coverPhotoId = cover.id;
+      const ids = (await albumRepository.listAlbumPhotos(current.id)).map((photo) => photo.id);
+      await db.transaction((run) => photoRepository.reorderPhotos(mergeOrder([cover.id], ids), run));
     }
 
     // undefined keeps the current collection, null takes the album out of it.
@@ -146,7 +148,6 @@ async function updateAlbum(req, res, next) {
       description: payload.description,
       visibility: payload.visibility,
       passwordHash,
-      coverPhotoId,
       collectionId,
     });
 
@@ -162,6 +163,32 @@ async function updateAlbum(req, res, next) {
       success: true,
       data: publicAlbum(updated, { accessUserIds: await albumRepository.getAlbumAccessUserIds(current.id) }),
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** New order of the albums of one collection (or of the albums without collection). */
+async function reorderAlbums(req, res, next) {
+  try {
+    const payload = albumOrderSchema.parse(req.body);
+    await assertCollectionExists(payload.collectionId);
+    const ids = mergeOrder(payload.ids, await albumRepository.listAlbumIdsInCollection(payload.collectionId));
+    await db.transaction((run) => albumRepository.reorderAlbums(ids, run));
+    res.json({ success: true, data: { ids } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** New order of an album's photos. The first one becomes the cover. */
+async function reorderPhotos(req, res, next) {
+  try {
+    const album = await loadAlbum(req.params.id);
+    const payload = orderSchema.parse(req.body);
+    const ids = mergeOrder(payload.ids, (await albumRepository.listAlbumPhotos(album.id)).map((photo) => photo.id));
+    await db.transaction((run) => photoRepository.reorderPhotos(ids, run));
+    res.json({ success: true, data: { ids, coverPhotoId: ids[0] ?? null } });
   } catch (error) {
     next(error);
   }
@@ -188,5 +215,7 @@ module.exports = {
   listAlbumPhotos,
   createAlbum,
   updateAlbum,
+  reorderAlbums,
+  reorderPhotos,
   deleteAlbum,
 };

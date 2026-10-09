@@ -325,8 +325,8 @@ describe('collections', () => {
 
     const anonymous = await request(app).get(`/api/collections/${collection.id}/photos`);
     expect(anonymous.status).toBe(200);
-    // Albums by name (Bayamo before Trinidad), newest photo first inside each album.
-    expect(anonymous.body.data.map((p) => `${p.albumName}/${p.originalName}`)).toEqual(['Bayamo/trova.jpg', 'Bayamo/casa.jpg', 'Trinidad/plaza.jpg']);
+    // Albums in the collection's order (creation order until someone reorders), photos in upload order.
+    expect(anonymous.body.data.map((p) => `${p.albumName}/${p.originalName}`)).toEqual(['Trinidad/plaza.jpg', 'Bayamo/casa.jpg', 'Bayamo/trova.jpg']);
     expect(anonymous.body.data[0]).not.toHaveProperty('originalPath');
 
     const everything = await agent.get(`/api/collections/${collection.id}/photos`);
@@ -351,6 +351,132 @@ describe('collections', () => {
     expect((await agent.delete(`/api/collections/${collection.id}`)).status).toBe(200);
     expect((await request(app).get(`/api/albums/${album.id}`)).status).toBe(404);
     expect(fs.readdirSync(path.join(pictures, 'Italie', 'Rome', 'original'))).toHaveLength(0);
+  });
+});
+
+describe('manual order', () => {
+  const upload = async (agent, albumId, name) => (
+    await agent.post(`/api/albums/${albumId}/photos`).attach('photos', await jpeg(), { filename: name, contentType: 'image/jpeg' })
+  ).body.data[0];
+  const photoNames = async (albumId) => (await request(app).get(`/api/albums/${albumId}/photos`)).body.data.map((p) => p.originalName);
+
+  it('keeps photos in upload order, lets editors reorder them, and the first one is the cover', async () => {
+    const admin = await createUser({ role: 'main_admin' });
+    const agent = await signIn(admin);
+    const album = (await agent.post('/api/albums').send({ name: 'Rome', visibility: 'public' })).body.data;
+    const a = await upload(agent, album.id, 'a.jpg');
+    const b = await upload(agent, album.id, 'b.jpg');
+    const c = await upload(agent, album.id, 'c.jpg');
+    expect(await photoNames(album.id)).toEqual(['a.jpg', 'b.jpg', 'c.jpg']);
+    expect((await request(app).get(`/api/albums/${album.id}`)).body.data.coverPhotoId).toBe(a.id);
+
+    const editor = await signIn(await createUser({ permissions: ['VIEW_PUBLIC_ALBUMS', 'EDIT_ALBUMS'] }));
+    // Only part of the list: the photos left out keep their order after it.
+    const reordered = await editor.put(`/api/albums/${album.id}/photos/order`).send({ ids: [c.id, a.id] });
+    expect(reordered.status).toBe(200);
+    expect(reordered.body.data.coverPhotoId).toBe(c.id);
+    expect(await photoNames(album.id)).toEqual(['c.jpg', 'a.jpg', 'b.jpg']);
+    expect((await request(app).get(`/api/albums/${album.id}`)).body.data.coverPhotoId).toBe(c.id);
+
+    const viewer = await signIn(await createUser({ permissions: ['VIEW_PUBLIC_ALBUMS'] }));
+    expect((await viewer.put(`/api/albums/${album.id}/photos/order`).send({ ids: [b.id] })).status).toBe(403);
+
+    const other = (await agent.post('/api/albums').send({ name: 'Paris', visibility: 'public' })).body.data;
+    const stranger = await upload(agent, other.id, 'tour.jpg');
+    const invalid = await editor.put(`/api/albums/${album.id}/photos/order`).send({ ids: [stranger.id, a.id] });
+    expect(invalid.status).toBe(400);
+    expect((await editor.put(`/api/albums/${album.id}/photos/order`).send({ ids: [a.id, a.id] })).status).toBe(400);
+
+    // Choosing a cover the old way moves that photo to the front.
+    const cover = await agent.put(`/api/albums/${album.id}`).send({ name: 'Rome', visibility: 'public', coverPhotoId: b.id });
+    expect(cover.body.data.coverPhotoId).toBe(b.id);
+    expect(await photoNames(album.id)).toEqual(['b.jpg', 'c.jpg', 'a.jpg']);
+
+    // A moved photo goes at the end of its new album.
+    await agent.post('/api/photos/move').send({ photoId: b.id, targetAlbumId: other.id });
+    expect(await photoNames(other.id)).toEqual(['tour.jpg', 'b.jpg']);
+    expect((await request(app).get(`/api/albums/${album.id}`)).body.data.coverPhotoId).toBe(c.id);
+  });
+
+  it('orders albums in a collection (the first gives the cover), collections, and picks home page collections', async () => {
+    const admin = await createUser({ role: 'main_admin' });
+    const agent = await signIn(admin);
+    const voyages = (await agent.post('/api/collections').send({ name: 'Voyages' })).body.data;
+    const famille = (await agent.post('/api/collections').send({ name: 'Famille' })).body.data;
+    const amis = (await agent.post('/api/collections').send({ name: 'Amis' })).body.data;
+    const album = async (name, collectionId) => (await agent.post('/api/albums').send({ name, visibility: 'public', collectionId })).body.data;
+    const rome = await album('Rome', voyages.id);
+    const oslo = await album('Oslo', voyages.id);
+    const lima = await album('Lima', voyages.id);
+    const romePhoto = await upload(agent, rome.id, 'colisee.jpg');
+    const osloPhoto = await upload(agent, oslo.id, 'fjord.jpg');
+
+    const names = async (id) => (await request(app).get(`/api/collections/${id}`)).body.data.albums.map((a) => a.name);
+    expect(await names(voyages.id)).toEqual(['Rome', 'Oslo', 'Lima']);
+    expect((await request(app).get(`/api/collections/${voyages.id}`)).body.data.coverPhotoId).toBe(romePhoto.id);
+
+    const editor = await signIn(await createUser({ permissions: ['VIEW_PUBLIC_ALBUMS', 'EDIT_ALBUMS'] }));
+    expect((await editor.put('/api/albums/order').send({ collectionId: voyages.id, ids: [oslo.id, rome.id] })).status).toBe(200);
+    expect(await names(voyages.id)).toEqual(['Oslo', 'Rome', 'Lima']);
+    expect((await request(app).get('/api/collections')).body.data.find((c) => c.id === voyages.id).coverPhotoId).toBe(osloPhoto.id);
+    // The slideshow follows the same order.
+    expect((await request(app).get(`/api/collections/${voyages.id}/photos`)).body.data.map((p) => p.albumName)).toEqual(['Oslo', 'Rome']);
+
+    const elsewhere = await album('Noël', famille.id);
+    expect((await editor.put('/api/albums/order').send({ collectionId: voyages.id, ids: [elsewhere.id] })).status).toBe(400);
+    expect((await editor.put('/api/albums/order').send({ collectionId: 999999, ids: [] })).status).toBe(400);
+
+    // An album moved to another collection goes last there.
+    await agent.put(`/api/albums/${lima.id}`).send({ name: 'Lima', visibility: 'public', collectionId: famille.id });
+    expect(await names(famille.id)).toEqual(['Noël', 'Lima']);
+
+    // Albums without a collection have their own order.
+    const loose1 = await album('Divers', null);
+    const loose2 = await album('Brouillons', null);
+    expect((await editor.put('/api/albums/order').send({ collectionId: null, ids: [loose2.id, loose1.id] })).status).toBe(200);
+    const all = (await request(app).get('/api/albums')).body.data.map((a) => a.name);
+    expect(all.slice(-2)).toEqual(['Brouillons', 'Divers']);
+
+    const collectionNames = async () => (await agent.get('/api/collections')).body.data.map((c) => c.name);
+    expect(await collectionNames()).toEqual(['Voyages', 'Famille', 'Amis']);
+    expect((await editor.put('/api/collections/order').send({ ids: [amis.id, voyages.id] })).status).toBe(200);
+    expect(await collectionNames()).toEqual(['Amis', 'Voyages', 'Famille']);
+    expect((await agent.post('/api/collections').send({ name: 'Zoo' })).status).toBe(201);
+    expect(await collectionNames()).toEqual(['Amis', 'Voyages', 'Famille', 'Zoo']);
+
+    // Home page selection, kept when the collection is renamed without the flag.
+    expect((await editor.put(`/api/collections/${voyages.id}`).send({ name: 'Voyages', featured: true })).body.data.featured).toBe(true);
+    await editor.put(`/api/collections/${voyages.id}`).send({ name: 'Grands voyages' });
+    const listed = (await request(app).get('/api/collections')).body.data;
+    expect(listed.filter((c) => c.featured).map((c) => c.name)).toEqual(['Grands voyages']);
+    const viewer = await signIn(await createUser({ permissions: ['VIEW_PUBLIC_ALBUMS'] }));
+    expect((await viewer.put('/api/collections/order').send({ ids: [famille.id] })).status).toBe(403);
+  });
+
+  it('gives existing rows the order they were displayed in', async () => {
+    const admin = await createUser({ role: 'main_admin' });
+    const agent = await signIn(admin);
+    const collection = (await agent.post('/api/collections').send({ name: 'Archives' })).body.data;
+    const album = async (name) => (await agent.post('/api/albums').send({ name, visibility: 'public', collectionId: collection.id })).body.data;
+    const zebre = await album('Zèbre');
+    await album('avion');
+    await album('Été 10');
+    await album('Été 9');
+    const a = await upload(agent, zebre.id, 'a.jpg');
+    const b = await upload(agent, zebre.id, 'b.jpg');
+    await upload(agent, zebre.id, 'c.jpg');
+
+    // Back to the state before manual ordering: no order, a hand-picked cover.
+    await db.query('UPDATE photos SET sort_order = NULL');
+    await db.query('UPDATE albums SET sort_order = NULL, cover_photo_id = CASE WHEN id = $1 THEN $2 ELSE NULL END', [zebre.id, b.id]);
+    await db.query('UPDATE collections SET sort_order = NULL');
+    await require('../src/db/migrate').migrate();
+
+    // The old cover first, then newest first as the gallery used to show.
+    expect(await photoNames(zebre.id)).toEqual(['b.jpg', 'c.jpg', 'a.jpg']);
+    expect((await request(app).get(`/api/collections/${collection.id}`)).body.data.albums.map((x) => x.name))
+      .toEqual(['avion', 'Été 9', 'Été 10', 'Zèbre']);
+    expect(a.id).toBeLessThan(b.id);
   });
 });
 

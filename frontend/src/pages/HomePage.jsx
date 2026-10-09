@@ -1,4 +1,4 @@
-import { ArrowRight, Images, LogIn, Sparkles, Upload } from 'lucide-react';
+import { ArrowRight, House, Images, LogIn, Sparkles, Upload } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { AlbumGrid, CollectionGrid } from '../components/AlbumCard';
@@ -57,7 +57,11 @@ export function HomePage() {
   const loading = loadingCollections || loadingAlbums;
   // Collections first; albums only while nothing is organised in collections yet.
   const showCollections = loading || collections?.length > 0;
-  const recent = albums?.slice(0, 6);
+  // The collections picked by an editor, in their order; the first six otherwise.
+  const featured = collections?.filter((c) => c.featured);
+  const shownCollections = featured?.length ? featured : collections?.slice(0, 6);
+  const shownAlbums = albums?.slice(0, 6);
+  const hasMore = showCollections ? collections?.length > shownCollections?.length : albums?.length > 6;
 
   return (
     <>
@@ -101,19 +105,22 @@ export function HomePage() {
 
       <section>
         <div className="section-header">
-          <h2>{showCollections ? 'Collections' : 'Albums récents'}</h2>
-          {(showCollections ? collections?.length > 6 : albums?.length > 6) && (
-            <Link to="/collections">Tout voir <ArrowRight aria-hidden="true" /></Link>
-          )}
+          <h2>{showCollections ? 'Collections' : 'Albums'}</h2>
+          <div className="section-links">
+            {showCollections && hasPermission('EDIT_ALBUMS') && collections?.length > 0 && (
+              <Link to="/collections?organiser=1"><House aria-hidden="true" /> Choisir</Link>
+            )}
+            {hasMore && <Link to="/collections">Tout voir <ArrowRight aria-hidden="true" /></Link>}
+          </div>
         </div>
         {!loading && !collections?.length && !albums?.length ? (
           <EmptyState icon={Images} title="Aucun album pour l’instant">
             {isAuthenticated ? 'Les albums auxquels vous avez accès apparaîtront ici.' : 'Connectez-vous pour voir les albums qui vous sont réservés.'}
           </EmptyState>
         ) : showCollections ? (
-          <CollectionGrid collections={collections?.slice(0, 6)} loading={loading} skeletons={3} />
+          <CollectionGrid collections={shownCollections} loading={loading} skeletons={3} />
         ) : (
-          <AlbumGrid albums={recent} loading={loading} skeletons={3} />
+          <AlbumGrid albums={shownAlbums} loading={loading} skeletons={3} />
         )}
       </section>
     </>

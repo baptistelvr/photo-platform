@@ -84,6 +84,7 @@ export const api = {
   createCollection: (body) => request('/api/collections', { method: 'POST', body }),
   updateCollection: (id, body) => request(`/api/collections/${id}`, { method: 'PUT', body }),
   deleteCollection: (id) => request(`/api/collections/${id}`, { method: 'DELETE' }),
+  reorderCollections: (ids) => request('/api/collections/order', { method: 'PUT', body: { ids } }),
 
   listAlbums: (options) => request('/api/albums', options),
   getAlbum: (id, password) => request(`/api/albums/${id}`, { headers: albumHeaders(password) }),
@@ -91,6 +92,8 @@ export const api = {
   createAlbum: (body) => request('/api/albums', { method: 'POST', body }),
   updateAlbum: (id, body) => request(`/api/albums/${id}`, { method: 'PUT', body }),
   deleteAlbum: (id) => request(`/api/albums/${id}`, { method: 'DELETE' }),
+  reorderAlbums: (collectionId, ids) => request('/api/albums/order', { method: 'PUT', body: { collectionId, ids } }),
+  reorderPhotos: (albumId, ids) => request(`/api/albums/${albumId}/photos/order`, { method: 'PUT', body: { ids } }),
 
   uploadPhoto: (albumId, file, signal) => {
     const form = new FormData();
