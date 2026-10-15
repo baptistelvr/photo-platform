@@ -63,3 +63,13 @@ export const resolveTheme = (key, date) => (key === 'auto' ? seasonalTheme(date)
 export function fillName(text, firstName) {
   return text.replace(/\s*\{pr[ée]nom\}/gi, firstName ? ` ${firstName}` : '').replace(/\s+([,.])/g, '$1').trim();
 }
+
+/** How the cover shows the photos (keys match backend/src/utils/schemas.js). */
+export const BACKGROUNDS = [
+  { key: 'mosaique', label: 'Mosaïque 3D', description: 'Le mur incliné qui défile, d’origine.' },
+  { key: 'fondu', label: 'Fondu enchaîné', description: 'Une grande photo à la fois, qui zoome lentement puis laisse place à la suivante.' },
+  { key: 'grille', label: 'Grille vivante', description: 'Une grille à plat dont les photos se renouvellent une à une.' },
+  { key: 'polaroids', label: 'Polaroïds', description: 'Des tirages éparpillés sur la table, qui flottent doucement.' },
+  { key: 'pellicule', label: 'Pellicule', description: 'Deux bandes de film argentique qui défilent en sens inverse.' },
+  { key: 'uni', label: 'Uni', description: 'Pas de photos : la couleur et le décor du thème seuls.' },
+];

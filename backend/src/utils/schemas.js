@@ -58,11 +58,15 @@ const THEMES = [
   'printemps', 'ete', 'automne', 'hiver', 'halloween', 'noel', 'saint-valentin',
 ];
 
+const BACKGROUNDS = ['mosaique', 'fondu', 'grille', 'polaroids', 'pellicule', 'uni'];
+
 const siteSettingsSchema = z.object({
   heroTitle: trimmed(120).default(''),
   heroSubtitle: trimmed(160).default(''),
   heroText: trimmed(600).default(''),
   theme: z.enum(THEMES).default('classique'),
+  // How the cover shows the photos: 3D wall, slideshow, grid, prints, film strip, or none.
+  background: z.enum(BACKGROUNDS).default('mosaique'),
   showcase: z.object({
     mode: z.enum(['all', 'albums']).default('all'),
     albumIds: z.array(id).max(200).default([]),
@@ -95,6 +99,7 @@ module.exports = {
   photoAlbumsSchema,
   siteSettingsSchema,
   THEMES,
+  BACKGROUNDS,
   userSchema,
   resetPasswordSchema,
 };

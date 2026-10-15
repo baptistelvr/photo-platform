@@ -592,7 +592,9 @@ describe('site settings', () => {
     const admin = await createUser({ role: 'main_admin' });
     const agent = await signIn(admin);
     const defaults = (await request(app).get('/api/settings/site')).body.data;
-    expect(defaults).toMatchObject({ heroTitle: '', theme: 'classique', showcase: { mode: 'all', albumIds: [] } });
+    expect(defaults).toMatchObject({ heroTitle: '', theme: 'classique', background: 'mosaique', showcase: { mode: 'all', albumIds: [] } });
+    expect((await agent.put('/api/settings/site').send({ background: 'confettis' })).status).toBe(400);
+    expect((await agent.put('/api/settings/site').send({ background: 'polaroids' })).body.data.background).toBe('polaroids');
 
     const create = async (name, visibility = 'public') => (await agent.post('/api/albums').send({ name, visibility, ...(visibility === 'protected' ? { password: 'secret-album' } : {}) })).body.data;
     const best = await create('Best of');

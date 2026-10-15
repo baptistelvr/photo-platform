@@ -142,7 +142,8 @@ Les fichiers restent dans le dossier d'un des albums de la photo, et la suivent 
 
 - **Les textes.** Le titre, la deuxième ligne et le texte de présentation. `{prénom}` est remplacé par le prénom de la personne connectée ; un champ vide reprend le texte par défaut.
 - **Le thème.** Il en existe cinq permanents (Classique, Minuit, Argentique, Océan, Terracotta), quatre de saison (Printemps, Été, Automne, Hiver) et trois de fête (Halloween, Noël, Saint-Valentin), avec couleurs, police de titre, filtre sur les photos et petit décor animé. Le mode **Automatique** change tout seul selon la date. Les décors restent figés pour les personnes qui ont demandé à limiter les animations.
-- **Les photos du mur.** Toutes celles des albums publics, ou seulement celles d'albums choisis, sous-albums compris. Pour un mur « best of », il suffit de créer un album Best of et d'y ajouter les meilleures photos depuis la visionneuse. Les albums protégés ne sont jamais montrés sur le mur.
+- **Le fond.** La mosaïque 3D d'origine, un fondu enchaîné plein écran (une grande photo à la fois, avec un lent zoom), une grille vivante dont les photos se renouvellent une à une, des polaroïds éparpillés, deux bandes de pellicule qui défilent, ou un fond uni sans photos. Le fondu charge les photos en taille réelle, les autres fonds se contentent des miniatures.
+- **Les photos du fond.** Toutes celles des albums publics, ou seulement celles d'albums choisis, sous-albums compris. Pour un mur « best of », il suffit de créer un album Best of et d'y ajouter les meilleures photos depuis la visionneuse. Les albums protégés ne sont jamais montrés sur le mur.
 
 ## Diaporama
 

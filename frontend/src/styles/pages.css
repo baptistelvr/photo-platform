@@ -1963,3 +1963,52 @@ a.wall-tile:hover {
     order: -1;
   }
 }
+
+.background-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
+  gap: 10px;
+}
+
+.background-choice {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+
+.background-choice svg {
+  width: 20px;
+  height: 20px;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+}
+
+.background-choice strong {
+  font-size: 14px;
+}
+
+.background-choice span {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.background-choice:hover {
+  border-color: var(--border-strong);
+}
+
+.background-choice.checked {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.background-choice.checked svg {
+  color: var(--accent);
+}

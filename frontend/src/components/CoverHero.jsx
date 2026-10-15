@@ -2,7 +2,7 @@ import { Images, LogIn, Sparkles, Upload } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { pluralize } from '../lib/format';
 import { fillName, resolveTheme } from '../lib/themes';
-import { PhotoWall } from './PhotoWall';
+import { CoverBackground } from './CoverBackgrounds';
 import { SkinDecor } from './SkinDecor';
 
 const DEFAULT_TEXT = 'Des albums publics pour tout le monde, des albums protégés pour vos proches. '
@@ -38,17 +38,19 @@ export function CoverHero({
 }) {
   const ready = settings !== undefined;
   const skin = ready ? resolveTheme(settings?.theme) : undefined;
+  const background = settings?.background || 'mosaique';
   const { title, subtitle, text } = coverTexts(settings, user);
 
   return (
     <section
       className={`showcase${preview ? ' preview' : ''}`}
       data-skin={skin}
+      data-background={background}
       ref={sectionRef}
       aria-label={preview ? 'Aperçu de la page d’accueil' : undefined}
       {...motion}
     >
-      <PhotoWall ref={wallRef} photos={showcase?.photos} />
+      {ready && <CoverBackground type={background} photos={showcase?.photos} wallRef={wallRef} />}
       <div className="showcase-fade" aria-hidden="true" />
       {skin && <SkinDecor skin={skin} />}
       <div className="container showcase-content">

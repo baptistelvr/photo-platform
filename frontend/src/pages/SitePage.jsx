@@ -1,4 +1,6 @@
-import { Check, CopyPlus, Globe, LayoutGrid, Palette, RotateCcw, Type } from 'lucide-react';
+import {
+  Check, CopyPlus, Film, Globe, Grid3x3, ImagePlay, Images, Layers3, LayoutGrid, Palette, RotateCcw, Square, StickyNote, Type,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { AlbumPickerModal } from '../components/AlbumPickerModal';
 import { CoverHero } from '../components/CoverHero';
@@ -9,7 +11,9 @@ import { useToast } from '../hooks/useToast';
 import { albumLabel } from '../lib/albums';
 import { api } from '../lib/api';
 import { pluralize } from '../lib/format';
-import { AUTO_THEME, THEME_GROUPS, resolveTheme, themeByKey } from '../lib/themes';
+import { AUTO_THEME, BACKGROUNDS, THEME_GROUPS, resolveTheme, themeByKey } from '../lib/themes';
+
+const BACKGROUND_ICONS = { mosaique: Layers3, fondu: ImagePlay, grille: Grid3x3, polaroids: StickyNote, pellicule: Film, uni: Square };
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -96,37 +100,63 @@ export function SitePage() {
           </section>
 
           <section className="card card-body form-grid">
-            <h2 className="site-heading"><LayoutGrid aria-hidden="true" /> Photos du mur</h2>
-            <div className="segmented" role="group" aria-label="Photos du mur">
-              <button type="button" aria-pressed={form.showcase.mode === 'all'} onClick={() => setShowcase({ mode: 'all' })}>
-                <Globe aria-hidden="true" /> Tous les albums publics
-              </button>
-              <button type="button" aria-pressed={form.showcase.mode === 'albums'} onClick={() => setShowcase({ mode: 'albums' })}>
-                <Check aria-hidden="true" /> Albums choisis
-              </button>
+            <h2 className="site-heading"><LayoutGrid aria-hidden="true" /> Fond de la couverture</h2>
+            <div className="background-choices" role="radiogroup" aria-label="Fond de la couverture">
+              {BACKGROUNDS.map((option) => {
+                const Icon = BACKGROUND_ICONS[option.key];
+                const checked = (form.background || 'mosaique') === option.key;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    role="radio"
+                    aria-checked={checked}
+                    className={`background-choice${checked ? ' checked' : ''}`}
+                    onClick={() => set('background')(option.key)}
+                  >
+                    <Icon aria-hidden="true" />
+                    <strong>{option.label}</strong>
+                    <span>{option.description}</span>
+                  </button>
+                );
+              })}
             </div>
-            {form.showcase.mode === 'albums' && (
-              <div className="chosen-albums">
-                {chosen.length ? (
-                  <ul>
-                    {chosen.map((album) => (
-                      <li key={album.id}>
-                        <span className="truncate">{albumLabel(album)}</span>
-                        {album.visibility === 'protected' && <span className="badge badge-warning">protégé : ignoré</span>}
-                      </li>
-                    ))}
-                  </ul>
-                ) : <p className="muted">Aucun album choisi : le mur restera vide.</p>}
-                <button type="button" className="btn" onClick={() => setPicking(true)}>
-                  <CopyPlus aria-hidden="true" /> {chosen.length ? 'Modifier la sélection' : 'Choisir les albums'}
+          </section>
+
+          {form.background !== 'uni' && (
+            <section className="card card-body form-grid">
+              <h2 className="site-heading"><Images aria-hidden="true" /> Photos du fond</h2>
+              <div className="segmented" role="group" aria-label="Photos du mur">
+                <button type="button" aria-pressed={form.showcase.mode === 'all'} onClick={() => setShowcase({ mode: 'all' })}>
+                  <Globe aria-hidden="true" /> Tous les albums publics
+                </button>
+                <button type="button" aria-pressed={form.showcase.mode === 'albums'} onClick={() => setShowcase({ mode: 'albums' })}>
+                  <Check aria-hidden="true" /> Albums choisis
                 </button>
               </div>
-            )}
-            <p className="field-hint">
-              Seules les photos des albums publics apparaissent, sous-albums compris. Pour un mur « best of », créez un album
-              Best of et ajoutez-y vos meilleures photos depuis la visionneuse (bouton « Ajouter à d’autres albums »), sans les dupliquer.
-            </p>
-          </section>
+              {form.showcase.mode === 'albums' && (
+                <div className="chosen-albums">
+                  {chosen.length ? (
+                    <ul>
+                      {chosen.map((album) => (
+                        <li key={album.id}>
+                          <span className="truncate">{albumLabel(album)}</span>
+                          {album.visibility === 'protected' && <span className="badge badge-warning">protégé : ignoré</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="muted">Aucun album choisi : le mur restera vide.</p>}
+                  <button type="button" className="btn" onClick={() => setPicking(true)}>
+                    <CopyPlus aria-hidden="true" /> {chosen.length ? 'Modifier la sélection' : 'Choisir les albums'}
+                  </button>
+                </div>
+              )}
+              <p className="field-hint">
+                Seules les photos des albums publics apparaissent, sous-albums compris. Pour un mur « best of », créez un album
+                Best of et ajoutez-y vos meilleures photos depuis la visionneuse (bouton « Ajouter à d’autres albums »), sans les dupliquer.
+              </p>
+            </section>
+          )}
 
           <div className="site-actions">
             <button type="button" className="btn" disabled={!dirty || busy} onClick={() => setForm(saved.data)}>
