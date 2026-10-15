@@ -27,6 +27,9 @@ export const ACTION_LABELS = {
   COLLECTION_UPDATE: { label: 'Collection modifiée', color: '#f59e0b' },
   COLLECTION_DELETE: { label: 'Collection supprimée', color: '#ef4444' },
   STORAGE_PRUNE: { label: 'Stockage nettoyé', color: '#64748b' },
+  PHOTO_COPY: { label: 'Photo ajoutée à des albums', color: '#0ea5e9' },
+  PHOTO_UNLINK: { label: 'Photo retirée d’un album', color: '#f59e0b' },
+  SETTINGS_UPDATE: { label: 'Personnalisation modifiée', color: '#8b5cf6' },
   ALBUM_CREATE: { label: 'Album créé', color: '#10b981' },
   ALBUM_UPDATE: { label: 'Album modifié', color: '#f59e0b' },
   ALBUM_DELETE: { label: 'Album supprimé', color: '#ef4444' },
@@ -39,4 +42,4 @@ export const ACTION_LABELS = {
   USER_RESET_PASSWORD: { label: 'Mot de passe réinitialisé', color: '#a855f7' },
 };
 
-export const OBJECT_LABELS = { collection: 'Collection', album: 'Album', photo: 'Photo', user: 'Utilisateur', storage: 'Stockage' };
+export const OBJECT_LABELS = { collection: 'Collection', album: 'Album', photo: 'Photo', user: 'Utilisateur', storage: 'Stockage', settings: 'Personnalisation' };

@@ -15,11 +15,15 @@ import { formatDate, pluralize } from '../lib/format';
 function AlbumRow({ album, canEdit, canDelete, onEdit, onDelete }) {
   return (
     <div className="data-row">
-      <div className="cell-main">
+      {/* Sub-albums are indented under their parent. */}
+      <div className="cell-main" style={album.depth ? { paddingLeft: album.depth * 26 } : undefined}>
+        {album.depth > 0 && <span className="tree-branch" aria-hidden="true">↳</span>}
         <div className={`mini-cover${album.coverPhotoId ? '' : ' empty'}`}><CoverImage photoId={album.coverPhotoId} /></div>
         <div>
           <Link to={`/albums/${album.id}`} className="cell-title truncate" style={{ display: 'block' }}>{album.name}</Link>
-          <div className="cell-sub truncate">{album.description || 'Sans description'}</div>
+          <div className="cell-sub truncate">
+            {album.depth > 0 ? `Sous-album de ${album.ancestors[album.ancestors.length - 1]?.name}` : album.description || 'Sans description'}
+          </div>
         </div>
       </div>
       <div className="cell-extra">

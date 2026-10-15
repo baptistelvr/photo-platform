@@ -94,7 +94,7 @@ Sur Vercel, chaque requête `/api/*` plantait (`FUNCTION_INVOCATION_FAILED`, pui
 
 ## Collections et albums
 
-Deux niveaux : une **collection** regroupe des **albums**, et un album contient les photos. La visibilité se règle album par album (public, liste de personnes, mot de passe). Une collection n'apparaît à un visiteur que si elle contient au moins un album qu'il a le droit d'ouvrir ; les gestionnaires d'albums voient aussi les collections vides. Un album peut rester hors collection, il est alors listé à part.
+Une **collection** regroupe des **albums**, et un album contient des photos, des **sous-albums**, ou les deux. On peut imbriquer les sous-albums aussi profondément qu'on veut (bouton « Sous-album » sur la page d'un album, ou champ « Ranger dans » de la fiche album) ; un fil d'Ariane permet de remonter. Un album sans photo à lui affiche la couverture de son premier sous-album. La visibilité se règle album par album (public, liste de personnes, mot de passe). Une collection n'apparaît à un visiteur que si elle contient au moins un album qu'il a le droit d'ouvrir ; les gestionnaires d'albums voient aussi les collections vides. Un album peut rester hors collection, il est alors listé à part.
 
 Supprimer une collection supprime ses albums et leurs photos. La renommer déplace les fichiers dans le stockage, comme pour un album.
 
@@ -121,9 +121,28 @@ Mes photos/
     └── Noël 2024/    → album « Noël 2024 »
 ```
 
-Quand on glisse un seul dossier qui contient lui-même les collections (comme « Mes photos » ci-dessus), la page le détecte et propose de choisir son rôle : « contient mes collections » ou « est une collection ». Les photos posées directement dans un dossier de collection vont dans un album du même nom, et les dossiers plus profonds que l'album sont fusionnés dans celui-ci. Collections et albums sont créés s'ils n'existent pas, et réutilisés sinon (même nom, majuscules et accents compris). Les fichiers qui ne sont pas des JPEG et les fichiers cachés (`.DS_Store`, `._*`) sont ignorés.
+Quand on glisse un seul dossier qui contient lui-même les collections (comme « Mes photos » ci-dessus), la page le détecte et propose de choisir son rôle : « contient mes collections » ou « est une collection ». Les photos posées directement dans un dossier de collection vont dans un album du même nom, et chaque dossier sous un album devient un sous-album, quelle que soit la profondeur. La case « Ajouter aussi dans » place en plus chaque photo importée dans d'autres albums choisis. Collections et albums sont créés s'ils n'existent pas, et réutilisés sinon (même nom, majuscules et accents compris). Les fichiers qui ne sont pas des JPEG et les fichiers cachés (`.DS_Store`, `._*`) sont ignorés.
 
 Les photos de plus de 1 Mo sont réduites dans le navigateur avant l'envoi (2560 px maximum, orientation corrigée). Vos fichiers d'origine ne sont pas modifiés. L'envoi se fait trois photos à la fois, avec nouvel essai automatique en cas de coupure ; si l'import est interrompu, il suffit de glisser à nouveau le même dossier : les photos déjà présentes dans l'album (même nom de fichier) sont sautées. Laissez l'onglet ouvert pendant l'envoi.
+
+## Une photo dans plusieurs albums
+
+Une photo peut apparaître dans autant d'albums qu'on veut sans que son fichier soit copié. Dans la visionneuse, avec la permission `MOVE_PHOTOS` :
+
+- **Ajouter à d'autres albums** la place aussi ailleurs (dans un album « Best of », par exemple) ;
+- **Déplacer** la sort de l'album affiché pour la mettre dans un autre ;
+- **Retirer de cet album** l'enlève d'ici seulement, quand elle est aussi ailleurs ;
+- **Supprimer** l'efface partout, après confirmation.
+
+Les fichiers restent dans le dossier d'un des albums de la photo, et la suivent si cet album la perd ou est supprimé. Une photo est visible dès qu'un de ses albums l'est : mettre une photo d'un album protégé dans un album public la rend donc publique. Chaque album garde son propre ordre.
+
+## Personnaliser la page d'accueil
+
+**Administration › Personnalisation** (permission `MANAGE_PERMISSIONS`) règle la couverture de la page d'accueil, avec un aperçu à côté :
+
+- **Les textes.** Le titre, la deuxième ligne et le texte de présentation. `{prénom}` est remplacé par le prénom de la personne connectée ; un champ vide reprend le texte par défaut.
+- **Le thème.** Il en existe cinq permanents (Classique, Minuit, Argentique, Océan, Terracotta), quatre de saison (Printemps, Été, Automne, Hiver) et trois de fête (Halloween, Noël, Saint-Valentin), avec couleurs, police de titre, filtre sur les photos et petit décor animé. Le mode **Automatique** change tout seul selon la date. Les décors restent figés pour les personnes qui ont demandé à limiter les animations.
+- **Les photos du mur.** Toutes celles des albums publics, ou seulement celles d'albums choisis, sous-albums compris. Pour un mur « best of », il suffit de créer un album Best of et d'y ajouter les meilleures photos depuis la visionneuse. Les albums protégés ne sont jamais montrés sur le mur.
 
 ## Diaporama
 
@@ -143,7 +162,7 @@ Les miniatures des albums publics sont mises en cache une heure par le CDN de Ve
 
 - JPEG uniquement, 1 Mo maximum par fichier. Le contrôle porte sur l'extension, le type MIME, la signature binaire, puis un décodage complet.
 - Les images sont réencodées (orientation EXIF appliquée) et une miniature de 640 px est générée.
-- Chemins de stockage : `Pictures/<collection>/<album>/original/<fichier>.jpg` et `.../thumbnails/...` (sans le niveau collection pour un album qui n'en a pas). Renommer une collection ou un album, ou changer un album de collection, déplace donc ses fichiers.
+- Chemins de stockage : `Pictures/<collection>/<album parent…>/<album>/original/<fichier>.jpg` et `.../thumbnails/...` (sans le niveau collection pour un album qui n'en a pas). Renommer une collection ou un album, ou déplacer un album, déplace donc ses fichiers et ceux de ses sous-albums.
 - Le frontend envoie une photo par requête, ce qui reste bien en dessous de la limite de 4,5 Mo par requête des fonctions Vercel.
 
 ## Permissions

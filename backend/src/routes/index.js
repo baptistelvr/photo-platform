@@ -8,6 +8,7 @@ const photoController = require('../controllers/photoController');
 const userController = require('../controllers/userController');
 const adminController = require('../controllers/adminController');
 const collectionController = require('../controllers/collectionController');
+const settingsController = require('../controllers/settingsController');
 
 const router = Router();
 
@@ -48,6 +49,7 @@ router.put('/albums/:id', requirePermission(PERMISSIONS.EDIT_ALBUMS), albumContr
 router.delete('/albums/:id', requirePermission(PERMISSIONS.DELETE_ALBUMS), albumController.deleteAlbum);
 router.get('/albums/:id/photos', albumController.listAlbumPhotos);
 router.put('/albums/:id/photos/order', requirePermission(PERMISSIONS.EDIT_ALBUMS), albumController.reorderPhotos);
+router.delete('/albums/:id/photos/:photoId', requirePermission(PERMISSIONS.MOVE_PHOTOS), photoController.removeFromAlbum);
 router.post(
   '/albums/:id/photos',
   requirePermission(PERMISSIONS.UPLOAD_PHOTOS),
@@ -57,6 +59,7 @@ router.post(
 
 // Photos
 router.post('/photos/move', requirePermission(PERMISSIONS.MOVE_PHOTOS), photoController.movePhoto);
+router.post('/photos/:id/albums', requirePermission(PERMISSIONS.MOVE_PHOTOS), photoController.addToAlbums);
 router.get('/photos/showcase', photoController.showcase);
 router.get('/photos/:id', photoController.getPhoto);
 router.get('/photos/:id/thumbnail', photoController.streamThumbnail);
@@ -70,6 +73,10 @@ router.put('/users/:id', requirePermission(PERMISSIONS.MANAGE_USERS), userContro
 router.delete('/users/:id', requirePermission(PERMISSIONS.MANAGE_USERS), userController.deleteUser);
 router.post('/users/:id/reset-password', requirePermission(PERMISSIONS.MANAGE_USERS), userController.resetPassword);
 router.get('/permissions', requirePermission(PERMISSIONS.MANAGE_PERMISSIONS), userController.listPermissions);
+
+// Site settings: read by the home page, changed from the administration
+router.get('/settings/site', settingsController.getSiteSettings);
+router.put('/settings/site', requirePermission(PERMISSIONS.MANAGE_PERMISSIONS), settingsController.updateSiteSettings);
 
 // Administration
 router.get('/admin/logs', requirePermission(PERMISSIONS.MANAGE_PERMISSIONS), adminController.getLogs);

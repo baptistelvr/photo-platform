@@ -92,16 +92,21 @@ export const api = {
   createAlbum: (body) => request('/api/albums', { method: 'POST', body }),
   updateAlbum: (id, body) => request(`/api/albums/${id}`, { method: 'PUT', body }),
   deleteAlbum: (id) => request(`/api/albums/${id}`, { method: 'DELETE' }),
-  reorderAlbums: (collectionId, ids) => request('/api/albums/order', { method: 'PUT', body: { collectionId, ids } }),
+  // parentId: reorder the sub-albums of that album; otherwise the top-level albums of the collection.
+  reorderAlbums: (collectionId, ids, parentId = null) => request('/api/albums/order', { method: 'PUT', body: { collectionId, parentId, ids } }),
   reorderPhotos: (albumId, ids) => request(`/api/albums/${albumId}/photos/order`, { method: 'PUT', body: { ids } }),
 
-  uploadPhoto: (albumId, file, signal) => {
+  // alsoIn: other albums where the photo should also appear (same file, no copy).
+  uploadPhoto: (albumId, file, signal, alsoIn = []) => {
     const form = new FormData();
+    if (alsoIn.length) form.append('alsoIn', alsoIn.join(','));
     form.append('photos', file);
     return request(`/api/albums/${albumId}/photos`, { method: 'POST', body: form, signal });
   },
   showcase: (limit = 32) => request(`/api/photos/showcase?limit=${limit}`),
-  movePhoto: (photoId, targetAlbumId) => request('/api/photos/move', { method: 'POST', body: { photoId, targetAlbumId } }),
+  movePhoto: (photoId, targetAlbumId, fromAlbumId) => request('/api/photos/move', { method: 'POST', body: { photoId, targetAlbumId, fromAlbumId } }),
+  addPhotoToAlbums: (photoId, albumIds) => request(`/api/photos/${photoId}/albums`, { method: 'POST', body: { albumIds } }),
+  removePhotoFromAlbum: (albumId, photoId) => request(`/api/albums/${albumId}/photos/${photoId}`, { method: 'DELETE' }),
   deletePhoto: (id) => request(`/api/photos/${id}`, { method: 'DELETE' }),
 
   listUsers: () => request('/api/users'),
@@ -110,6 +115,9 @@ export const api = {
   deleteUser: (id) => request(`/api/users/${id}`, { method: 'DELETE' }),
   resetPassword: (id, password) => request(`/api/users/${id}/reset-password`, { method: 'POST', body: { password } }),
   listPermissions: () => request('/api/permissions'),
+
+  getSiteSettings: () => request('/api/settings/site'),
+  updateSiteSettings: (body) => request('/api/settings/site', { method: 'PUT', body }),
 
   getLogs: () => request('/api/admin/logs'),
   getStorage: () => request('/api/admin/storage'),

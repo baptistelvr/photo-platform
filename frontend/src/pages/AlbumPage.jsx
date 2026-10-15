@@ -1,10 +1,12 @@
 import {
-  ArrowDownAZ, ArrowDownUp, ArrowUpToLine, ArrowUpZA, Calendar, ClockArrowDown, ClockArrowUp, FlipVertical2, Globe,
-  ImagePlus, Images, KeyRound, Link2, Lock, LogIn, Pencil, Play, Star, Trash2, Upload,
+  ArrowDownAZ, ArrowDownUp, ArrowUpToLine, ArrowUpZA, Calendar, ClockArrowDown, ClockArrowUp, FlipVertical2, FolderPlus,
+  FolderTree, Globe, ImagePlus, Images, KeyRound, Link2, Lock, LogIn, Pencil, Play, Star, Trash2, Upload,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { AlbumCard, AlbumGrid } from '../components/AlbumCard';
 import { AlbumFormModal } from '../components/AlbumFormModal';
+import { AlbumPickerModal } from '../components/AlbumPickerModal';
 import { Dropdown } from '../components/Dropdown';
 import { Lightbox } from '../components/Lightbox';
 import { Modal } from '../components/Modal';
@@ -16,7 +18,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirm } from '../hooks/useConfirm';
 import { useOrderSaver } from '../hooks/useOrderSaver';
 import { useToast } from '../hooks/useToast';
-import { groupAlbumsByCollection } from '../lib/albums';
+import { albumLabel, albumOptionLabel, groupAlbumsByCollection } from '../lib/albums';
 import { api, thumbnailUrl } from '../lib/api';
 import { noDrag } from '../lib/noDrag';
 import { formatDate, pluralize } from '../lib/format';
@@ -143,7 +145,7 @@ function MovePhotoModal({ photo, currentAlbumId, onClose, onMoved }) {
       onSubmit={async () => {
         setBusy(true);
         try {
-          await api.movePhoto(photo.id, Number(target));
+          await api.movePhoto(photo.id, Number(target), currentAlbumId);
           const album = albums.find((a) => a.id === Number(target));
           toast.success(`Photo déplacée vers « ${album?.name} »`);
           onMoved(photo);
@@ -172,7 +174,7 @@ function MovePhotoModal({ photo, currentAlbumId, onClose, onMoved }) {
             <option value="" disabled>Choisir un album…</option>
             {groupAlbumsByCollection(albums).map((group) => (
               <optgroup key={group.key} label={group.label}>
-                {group.albums.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                {group.albums.map((a) => <option key={a.id} value={a.id}>{albumOptionLabel(a)}</option>)}
               </optgroup>
             ))}
           </select>
@@ -196,6 +198,9 @@ export function AlbumPage() {
   const [status, setStatus] = useState({ state: 'loading' });
   const [editing, setEditing] = useState(false);
   const [moving, setMoving] = useState(null);
+  const [copying, setCopying] = useState(null);
+  const [allAlbums, setAllAlbums] = useState(null);
+  const [creatingSub, setCreatingSub] = useState(false);
   const [reordering, setReordering] = useState(false);
 
   const load = useCallback(async (password) => {
@@ -228,6 +233,20 @@ export function AlbumPage() {
       load();
     },
   );
+  const [subOrderStatus, saveSubOrder] = useOrderSaver(
+    ({ collectionId, ids }) => api.reorderAlbums(collectionId, ids, Number(id)),
+    (error) => {
+      toast.error(error.message);
+      load();
+    },
+  );
+
+  // Names of the other albums a photo is in: loaded once, for the people who can file photos.
+  const canFile = hasPermission('MOVE_PHOTOS');
+  useEffect(() => {
+    if (!canFile) return;
+    api.listAlbums().then(setAllAlbums).catch(() => setAllAlbums([]));
+  }, [canFile, id]);
 
   const openId = Number(searchParams.get('photo'));
   const openIndex = openId ? photos.findIndex((p) => p.id === openId) : -1;
@@ -264,6 +283,8 @@ export function AlbumPage() {
   }
 
   const canEdit = hasPermission('EDIT_ALBUMS');
+  const subAlbums = album.subAlbums || [];
+  const albumName = (albumId) => allAlbums?.find((a) => a.id === albumId)?.name;
   const removePhoto = (photo) => {
     const rest = photos.filter((p) => p.id !== photo.id);
     setPhotos(rest);
@@ -296,11 +317,37 @@ export function AlbumPage() {
       setOpenPhoto(null);
       slideshow.open(photo.id);
     },
-    onMove: hasPermission('MOVE_PHOTOS') ? (photo) => setMoving(photo) : undefined,
+    onMove: canFile ? (photo) => setMoving(photo) : undefined,
+    onCopy: canFile ? (photo) => setCopying(photo) : undefined,
+    // Only when the photo is also elsewhere: otherwise it would belong nowhere.
+    onRemove: canFile ? async (photo) => {
+      const others = (photo.albumIds || []).filter((albumId) => albumId !== album.id);
+      if (!others.length) {
+        toast.info('Cette photo n’est dans aucun autre album : utilisez Supprimer ou Déplacer.');
+        return;
+      }
+      const ok = await confirm({
+        title: 'Retirer de cet album ?',
+        message: `« ${photo.originalName} » reste dans ${pluralize(others.length, 'autre album', 'autres albums')}${others.map(albumName).filter(Boolean).length ? ` (${others.map(albumName).filter(Boolean).join(', ')})` : ''}.`,
+        confirmLabel: 'Retirer',
+      });
+      if (!ok) return;
+      try {
+        await api.removePhotoFromAlbum(album.id, photo.id);
+        removePhoto(photo);
+        toast.success('Photo retirée de cet album');
+      } catch (error) {
+        toast.error(error.message);
+      }
+    } : undefined,
+    alsoIn: (photo) => (photo.albumIds || []).filter((albumId) => albumId !== album.id).map((albumId) => albumName(albumId) || 'un autre album'),
     onDelete: hasPermission('DELETE_PHOTOS') ? async (photo) => {
+      const elsewhere = (photo.albumIds || []).length - 1;
       const ok = await confirm({
         title: 'Supprimer cette photo ?',
-        message: `« ${photo.originalName} » sera définitivement supprimée.`,
+        message: elsewhere > 0
+          ? `« ${photo.originalName} » sera supprimée partout, y compris dans ${pluralize(elsewhere, 'autre album', 'autres albums')}. Pour la retirer seulement d’ici, utilisez « Retirer de cet album ».`
+          : `« ${photo.originalName} » sera définitivement supprimée.`,
         confirmLabel: 'Supprimer',
         danger: true,
       });
@@ -328,7 +375,7 @@ export function AlbumPage() {
   const deleteAlbum = async () => {
     const ok = await confirm({
       title: 'Supprimer cet album ?',
-      message: `« ${album.name} » et ses ${pluralize(album.photosCount, 'photo')} seront définitivement supprimés.`,
+      message: `« ${album.name} »${subAlbums.length ? `, ses ${pluralize(subAlbums.length, 'sous-album')}` : ''} et leurs photos seront supprimés. Les photos présentes aussi dans d’autres albums y sont conservées.`,
       confirmLabel: 'Supprimer l’album',
       danger: true,
     });
@@ -336,7 +383,8 @@ export function AlbumPage() {
     try {
       await api.deleteAlbum(album.id);
       toast.success('Album supprimé');
-      navigate(album.collectionId ? `/collections/${album.collectionId}` : '/collections');
+      const parent = album.ancestors?.[album.ancestors.length - 1];
+      navigate(parent ? `/albums/${parent.id}` : album.collectionId ? `/collections/${album.collectionId}` : '/collections');
     } catch (error) {
       toast.error(error.message);
     }
@@ -345,14 +393,15 @@ export function AlbumPage() {
   return (
     <>
       <PageHeader
-        back={album.collectionId
-          ? { to: `/collections/${album.collectionId}`, label: album.collectionName }
-          : { to: '/collections', label: 'Collections' }}
+        trail={[
+          album.collectionId ? { to: `/collections/${album.collectionId}`, label: album.collectionName } : { to: '/collections', label: 'Collections' },
+          ...(album.ancestors || []).map((a) => ({ to: `/albums/${a.id}`, label: a.name })),
+        ]}
         title={album.name}
         subtitle={album.description || undefined}
         actions={!reordering && (
           <>
-            {canEdit && photos.length > 1 && (
+            {canEdit && (photos.length > 1 || subAlbums.length > 1) && (
               <button type="button" className="btn" onClick={() => setReordering(true)}><ArrowDownUp aria-hidden="true" /> Réorganiser</button>
             )}
             {photos.length > 0 && (
@@ -367,6 +416,9 @@ export function AlbumPage() {
                 <Trash2 />
               </button>
             )}
+            {hasPermission('CREATE_ALBUMS') && (
+              <button type="button" className="btn" onClick={() => setCreatingSub(true)}><FolderPlus aria-hidden="true" /> Sous-album</button>
+            )}
             {hasPermission('UPLOAD_PHOTOS') && (
               <Link to={`/upload?album=${album.id}`} className="btn btn-primary"><Upload aria-hidden="true" /> Importer</Link>
             )}
@@ -379,6 +431,7 @@ export function AlbumPage() {
             {album.visibility === 'protected' ? (album.hasPassword ? 'Protégé par mot de passe' : 'Accès restreint') : 'Public'}
           </span>
           <span className="badge"><Images aria-hidden="true" />{pluralize(photos.length, 'photo')}</span>
+          {subAlbums.length > 0 && <span className="badge"><FolderTree aria-hidden="true" />{pluralize(subAlbums.length, 'sous-album')}</span>}
           <span className="badge"><Calendar aria-hidden="true" />Créé le {formatDate(album.createdAt)}</span>
         </div>
       </PageHeader>
@@ -386,7 +439,7 @@ export function AlbumPage() {
       {reordering ? (
         <>
           <ReorderBanner
-            status={orderStatus}
+            status={[orderStatus, subOrderStatus].includes('saving') ? 'saving' : [orderStatus, subOrderStatus].includes('error') ? 'error' : [orderStatus, subOrderStatus].includes('saved') ? 'saved' : 'idle'}
             onDone={() => setReordering(false)}
             extra={(
               <Dropdown
@@ -410,8 +463,24 @@ export function AlbumPage() {
               </Dropdown>
             )}
           >
-            Glissez les photos pour changer leur ordre. La première est la couverture de l’album.
+            Glissez les sous-albums et les photos pour changer leur ordre. La première photo est la couverture de l’album.
           </ReorderBanner>
+          {subAlbums.length > 1 && (
+            <section className="album-section">
+              <h2 className="section-title">Sous-albums</h2>
+              <SortableGrid
+                className="album-grid"
+                items={subAlbums}
+                getLabel={(a) => `Sous-album ${a.name}`}
+                onReorder={(list) => {
+                  setAlbum((a) => ({ ...a, subAlbums: list }));
+                  saveSubOrder({ collectionId: album.collectionId, ids: list.map((a) => a.id) });
+                }}
+                renderItem={(sub) => <AlbumCard album={sub} asStatic />}
+              />
+            </section>
+          )}
+          {subAlbums.length > 1 && photos.length > 1 && <h2 className="section-title">Photos</h2>}
           <SortableGrid
             className="reorder-grid"
             items={photos}
@@ -420,7 +489,7 @@ export function AlbumPage() {
             renderItem={(photo, index) => <ReorderTile photo={photo} index={index} onFirst={moveToFront} />}
           />
         </>
-      ) : !photos.length ? (
+      ) : !photos.length && !subAlbums.length ? (
         <EmptyState
           icon={ImagePlus}
           title="Cet album est vide"
@@ -428,19 +497,32 @@ export function AlbumPage() {
             <Link to={`/upload?album=${album.id}`} className="btn btn-primary"><Upload aria-hidden="true" /> Importer des photos</Link>
           )}
         >
-          Les photos importées dans cet album apparaîtront ici.
+          Importez des photos ici, ou créez des sous-albums pour les ranger.
         </EmptyState>
       ) : (
-        <div className="gallery">
-          {photos.map((photo, index) => (
-            <GalleryItem
-              key={photo.id}
-              photo={photo}
-              onOpen={setOpenPhoto}
-              isCover={canEdit && index === 0}
-            />
-          ))}
-        </div>
+        <>
+          {subAlbums.length > 0 && (
+            <section className="album-section">
+              {photos.length > 0 && <h2 className="section-title">Sous-albums</h2>}
+              <AlbumGrid albums={subAlbums} />
+            </section>
+          )}
+          {photos.length > 0 && (
+            <section className="album-section">
+              {subAlbums.length > 0 && <h2 className="section-title">Photos</h2>}
+              <div className="gallery">
+                {photos.map((photo, index) => (
+                  <GalleryItem
+                    key={photo.id}
+                    photo={photo}
+                    onOpen={setOpenPhoto}
+                    isCover={canEdit && index === 0}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+        </>
       )}
 
       {openIndex >= 0 && (
@@ -461,6 +543,31 @@ export function AlbumPage() {
         onSaved={(updated) => setAlbum((a) => ({ ...a, ...updated }))}
       />
       <MovePhotoModal photo={moving} currentAlbumId={album.id} onClose={() => setMoving(null)} onMoved={removePhoto} />
+      <AlbumPickerModal
+        open={Boolean(copying)}
+        title="Ajouter à d’autres albums"
+        description={copying ? `« ${copying.originalName} » apparaîtra aussi dans les albums cochés. Le fichier n’est pas dupliqué.` : undefined}
+        albums={allAlbums}
+        lockedIds={copying?.albumIds || [album.id]}
+        confirmLabel="Ajouter"
+        onClose={() => setCopying(null)}
+        onConfirm={async (albumIds) => {
+          try {
+            const { albumIds: now } = await api.addPhotoToAlbums(copying.id, albumIds);
+            setPhotos((list) => list.map((p) => (p.id === copying.id ? { ...p, albumIds: now } : p)));
+            toast.success(`Photo ajoutée à ${pluralize(albumIds.length, 'album')} : ${albumIds.map((albumId) => albumLabel(allAlbums.find((a) => a.id === albumId) || { name: '?' })).join(', ')}`);
+            setCopying(null);
+          } catch (error) {
+            toast.error(error.message);
+          }
+        }}
+      />
+      <AlbumFormModal
+        open={creatingSub}
+        defaultParentId={album.id}
+        onClose={() => setCreatingSub(false)}
+        onSaved={(created) => navigate(`/albums/${created.id}`)}
+      />
       {slideshow.element}
     </>
   );

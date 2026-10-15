@@ -281,3 +281,18 @@ main.container {
   padding-top: 20px;
   padding-bottom: 20px;
 }
+
+.page-header .eyebrow.trail {
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.page-header .trail a:hover {
+  color: var(--text);
+}
+
+.page-header .trail-sep {
+  margin-right: 6px;
+  color: var(--text-muted);
+  opacity: 0.6;
+}

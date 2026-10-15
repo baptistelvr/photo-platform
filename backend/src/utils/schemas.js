@@ -24,6 +24,7 @@ const albumSchema = z.object({
   coverPhotoId: id.nullable().optional(),
   accessUserIds: z.array(id).optional(),
   collectionId: id.nullable().optional(),
+  parentId: id.nullable().optional(),
 });
 
 const collectionSchema = z.object({
@@ -35,15 +36,37 @@ const collectionSchema = z.object({
 // Ids in their new order. Duplicates are refused.
 const orderIds = z.array(id).max(20000).refine((ids) => new Set(ids).size === ids.length, 'Identifiants en double');
 const orderSchema = z.object({ ids: orderIds });
-const albumOrderSchema = z.object({ collectionId: id.nullable(), ids: orderIds });
+const albumOrderSchema = z.object({ collectionId: id.nullable(), parentId: id.nullable().optional(), ids: orderIds });
 
 const storagePruneSchema = z.object({
   deleteEmptyAlbums: z.boolean().default(false),
 });
 
+// fromAlbumId: the album the photo leaves (by default the one holding its files).
 const photoMoveSchema = z.object({
   photoId: id,
   targetAlbumId: id,
+  fromAlbumId: id.optional(),
+});
+
+const photoAlbumsSchema = z.object({
+  albumIds: z.array(id).min(1).max(200),
+});
+
+const THEMES = [
+  'auto', 'classique', 'minuit', 'argentique', 'ocean', 'terracotta',
+  'printemps', 'ete', 'automne', 'hiver', 'halloween', 'noel', 'saint-valentin',
+];
+
+const siteSettingsSchema = z.object({
+  heroTitle: trimmed(120).default(''),
+  heroSubtitle: trimmed(160).default(''),
+  heroText: trimmed(600).default(''),
+  theme: z.enum(THEMES).default('classique'),
+  showcase: z.object({
+    mode: z.enum(['all', 'albums']).default('all'),
+    albumIds: z.array(id).max(200).default([]),
+  }).default({ mode: 'all', albumIds: [] }),
 });
 
 const userSchema = z.object({
@@ -69,6 +92,9 @@ module.exports = {
   albumOrderSchema,
   storagePruneSchema,
   photoMoveSchema,
+  photoAlbumsSchema,
+  siteSettingsSchema,
+  THEMES,
   userSchema,
   resetPasswordSchema,
 };
