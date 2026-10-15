@@ -46,7 +46,12 @@ export function AlbumCard({ album, asStatic = false, corner = null }) {
       </div>
       <div className="album-meta">
         <h3 title={album.name}>{album.name}</h3>
-        <p>{pluralize(album.photosCount, 'photo')}</p>
+        <p>
+          {album.subAlbumsCount > 0 && !album.photosCount
+            ? pluralize(album.subAlbumsCount, 'sous-album')
+            : pluralize(album.photosCount, 'photo')}
+          {album.subAlbumsCount > 0 && album.photosCount > 0 && ` · ${pluralize(album.subAlbumsCount, 'sous-album')}`}
+        </p>
       </div>
     </CardRoot>
   );

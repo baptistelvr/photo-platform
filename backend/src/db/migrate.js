@@ -43,6 +43,17 @@ function schemaStatements(dialect) {
       uploaded_by INTEGER NOT NULL REFERENCES users(id),
       created_at TEXT NOT NULL DEFAULT ${now}
     )`,
+    // Which albums show a photo, and where. photos.album_id stays the album
+    // whose folder holds the files; a photo can also appear in other albums.
+    `CREATE TABLE IF NOT EXISTS album_photos (
+      album_id INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+      photo_id INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (album_id, photo_id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS site_settings (
+      key TEXT PRIMARY KEY, value TEXT NOT NULL
+    )`,
     `CREATE TABLE IF NOT EXISTS audit_logs (
       id ${id}, actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL, action TEXT NOT NULL,
       object_type TEXT NOT NULL, object_id TEXT, metadata TEXT, ip_address TEXT,
@@ -50,6 +61,7 @@ function schemaStatements(dialect) {
     )`,
     'CREATE INDEX IF NOT EXISTS idx_photos_album ON photos (album_id, created_at)',
     'CREATE INDEX IF NOT EXISTS idx_album_access_user ON album_access (user_id)',
+    'CREATE INDEX IF NOT EXISTS idx_album_photos_photo ON album_photos (photo_id)',
     'CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs (created_at)',
   ];
 
@@ -90,12 +102,15 @@ async function addMissingColumns(query) {
     ['collections', 'featured', 'INTEGER NOT NULL DEFAULT 0'],
     ['albums', 'sort_order', 'INTEGER'],
     ['photos', 'sort_order', 'INTEGER'],
+    // Sub-albums, as deep as wanted. A sub-album shares its parent's collection.
+    ['albums', 'parent_id', 'INTEGER REFERENCES albums(id) ON DELETE CASCADE'],
   ];
   for (const [table, name, definition] of columns) {
     if (!(await hasColumn(query, table, name))) await query(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
   }
   await query('CREATE INDEX IF NOT EXISTS idx_albums_collection ON albums (collection_id)');
   await query('CREATE INDEX IF NOT EXISTS idx_photos_album_order ON photos (album_id, sort_order)');
+  await query('CREATE INDEX IF NOT EXISTS idx_albums_parent ON albums (parent_id)');
 }
 
 const byName = (a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true, sensitivity: 'base' }) || a.id - b.id;
@@ -131,6 +146,13 @@ async function backfillOrder(query) {
   }
 }
 
+/** Every photo belongs at least to the album holding its files, at the place it had there. */
+async function backfillMemberships(query) {
+  await query(`INSERT INTO album_photos (album_id, photo_id, sort_order)
+    SELECT album_id, id, COALESCE(sort_order, 0) FROM photos
+    WHERE NOT EXISTS (SELECT 1 FROM album_photos ap WHERE ap.photo_id = photos.id)`);
+}
+
 async function migrate() {
   await db.transaction(async (query) => {
     for (const statement of schemaStatements(db.dialect)) {
@@ -138,6 +160,7 @@ async function migrate() {
     }
     await addMissingColumns(query);
     await backfillOrder(query);
+    await backfillMemberships(query);
     for (const code of ALL_PERMISSIONS) {
       await query(
         'INSERT INTO permissions (code, description) VALUES ($1, $2) ON CONFLICT (code) DO UPDATE SET description = excluded.description',

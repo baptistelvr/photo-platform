@@ -1,13 +1,12 @@
-import { ArrowRight, House, Images, LogIn, Sparkles, Upload } from 'lucide-react';
+import { ArrowRight, House, Images } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { AlbumGrid, CollectionGrid } from '../components/AlbumCard';
-import { PhotoWall } from '../components/PhotoWall';
+import { CoverHero } from '../components/CoverHero';
 import { EmptyState } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useFetch } from '../hooks/useFetch';
 import { api } from '../lib/api';
-import { pluralize } from '../lib/format';
 
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -51,6 +50,8 @@ export function HomePage() {
   const { data: collections, loading: loadingCollections } = useFetch(() => api.listCollections(), [user?.id]);
   const { data: albums, loading: loadingAlbums } = useFetch(() => api.listAlbums(), [user?.id]);
   const { data: showcase } = useFetch(() => api.showcase(32), []);
+  // Texts, skin and wall source chosen in the administration (defaults if unreachable).
+  const { data: settings, error: settingsError } = useFetch(() => api.getSiteSettings(), []);
   const sectionRef = useRef(null);
   const wallRef = useRef(null);
   const motion = useShowcaseMotion(sectionRef, wallRef);
@@ -60,48 +61,20 @@ export function HomePage() {
   // The collections picked by an editor, in their order; the first six otherwise.
   const featured = collections?.filter((c) => c.featured);
   const shownCollections = featured?.length ? featured : collections?.slice(0, 6);
-  const shownAlbums = albums?.slice(0, 6);
+  const shownAlbums = albums?.filter((a) => !a.depth).slice(0, 6);
   const hasMore = showCollections ? collections?.length > shownCollections?.length : albums?.length > 6;
 
   return (
     <>
-      <section className="showcase" ref={sectionRef} {...motion}>
-        <PhotoWall ref={wallRef} photos={showcase?.photos} />
-        <div className="showcase-fade" aria-hidden="true" />
-        <div className="container showcase-content">
-          <div className="showcase-copy">
-            {showcase?.totalPhotos > 0 && (
-              <span className="showcase-pill">
-                <Sparkles aria-hidden="true" />
-                {pluralize(showcase.totalPhotos, 'photo')} dans {pluralize(showcase.totalAlbums, 'album public', 'albums publics')}
-              </span>
-            )}
-            <h1>
-              {isAuthenticated ? `Bonjour ${user.name.split(' ')[0]},` : 'Vos photos,'}
-              <br />
-              <span className="muted">{isAuthenticated ? 'que partage-t-on aujourd’hui ?' : 'simplement partagées.'}</span>
-            </h1>
-            <p className="lead">
-              Des albums publics pour tout le monde, des albums protégés pour vos proches.
-              Les images sont stockées en privé et servies seulement à ceux qui y ont droit.
-            </p>
-            <div className="hero-actions">
-              <Link to="/collections" className="btn btn-primary btn-lg">
-                <Images aria-hidden="true" /> Parcourir les collections
-              </Link>
-              {hasPermission('UPLOAD_PHOTOS') ? (
-                <Link to="/upload" className="btn btn-lg">
-                  <Upload aria-hidden="true" /> Importer des photos
-                </Link>
-              ) : !isAuthenticated && (
-                <Link to="/login" className="btn btn-lg">
-                  <LogIn aria-hidden="true" /> Se connecter
-                </Link>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
+      <CoverHero
+        settings={settingsError ? null : settings}
+        showcase={showcase}
+        user={isAuthenticated ? user : null}
+        canUpload={hasPermission('UPLOAD_PHOTOS')}
+        sectionRef={sectionRef}
+        wallRef={wallRef}
+        motion={motion}
+      />
 
       <section>
         <div className="section-header">

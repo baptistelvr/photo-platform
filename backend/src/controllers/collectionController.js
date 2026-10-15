@@ -2,20 +2,21 @@ const db = require('../config/db');
 const albumRepository = require('../repositories/albumRepository');
 const { addAuditLog } = require('../repositories/auditRepository');
 const collectionRepository = require('../repositories/collectionRepository');
-const { hasPermission, filterVisibleAlbums } = require('../services/accessService');
+const { hasPermission } = require('../services/accessService');
+const { destroyAlbums, relocateAlbumPhotos, visibleAlbumTree } = require('../services/albumService');
 const { PERMISSIONS } = require('../constants/permissions');
 const { HttpError } = require('../utils/httpError');
 const { parseId } = require('../utils/params');
 const { mergeOrder } = require('../utils/order');
 const { collectionSchema, orderSchema } = require('../utils/schemas');
 const { publicAlbum, publicCollection, publicPhoto } = require('../utils/serializers');
-const { destroyAlbum, relocateAlbumPhotos } = require('./albumController');
 
 const MANAGE = [PERMISSIONS.CREATE_ALBUMS, PERMISSIONS.EDIT_ALBUMS, PERMISSIONS.DELETE_ALBUMS];
 const canManage = (user) => MANAGE.some((permission) => hasPermission(user, permission));
 
+/** Visible albums of each collection, sub-albums included, parents followed by their sub-albums. */
 async function visibleAlbumsByCollection(req) {
-  const albums = await filterVisibleAlbums(req, await albumRepository.listAlbums());
+  const albums = await visibleAlbumTree(req);
   const byCollection = new Map();
   for (const album of albums) {
     if (!album.collectionId) continue;
@@ -65,7 +66,8 @@ async function getCollection(req, res, next) {
       success: true,
       data: {
         ...publicCollection(collection, albums),
-        albums: albums.map((album) => publicAlbum(album)),
+        // The collection page shows its top-level albums; sub-albums are inside them.
+        albums: albums.filter((album) => !album.depth).map((album) => publicAlbum(album)),
       },
     });
   } catch (error) {
@@ -87,11 +89,13 @@ async function listCollectionPhotos(req, res, next) {
     for (const photo of await albumRepository.listPhotosOfAlbums(albums.map((album) => album.id))) {
       byAlbum.get(photo.albumId)?.push(photo);
     }
+    // A photo shown in several albums of the collection is played once, in the first.
+    const seen = new Set();
+    const photos = albums.flatMap((album) => byAlbum.get(album.id)
+      .filter((photo) => !seen.has(photo.id) && seen.add(photo.id))
+      .map((photo) => ({ ...publicPhoto(photo), albumName: [...album.ancestors.map((a) => a.name), album.name].join(' › ') })));
     res.set('Cache-Control', 'no-store');
-    res.json({
-      success: true,
-      data: albums.flatMap((album) => byAlbum.get(album.id).map((photo) => ({ ...publicPhoto(photo), albumName: album.name }))),
-    });
+    res.json({ success: true, data: photos });
   } catch (error) {
     next(error);
   }
@@ -117,10 +121,11 @@ async function updateCollection(req, res, next) {
       featured: payload.featured ?? Boolean(Number(current.featured)),
     });
 
-    // The collection name is part of every photo path inside it.
+    // The collection name is part of every photo path inside it (sub-albums follow their parent).
     if (updated.name !== current.name) {
+      const links = await albumRepository.albumLinks();
       for (const albumId of await albumRepository.listAlbumIdsInCollection(current.id)) {
-        await relocateAlbumPhotos(albumId);
+        if (!links.get(albumId)?.parentId) await relocateAlbumPhotos(albumId);
       }
     }
 
@@ -148,11 +153,8 @@ async function reorderCollections(req, res, next) {
 async function deleteCollection(req, res, next) {
   try {
     const collection = await loadCollection(req.params.id);
-    let photos = 0;
     const albumIds = await albumRepository.listAlbumIdsInCollection(collection.id);
-    for (const albumId of albumIds) {
-      photos += await destroyAlbum(await albumRepository.getAlbumById(albumId));
-    }
+    const photos = await destroyAlbums(albumIds);
     await collectionRepository.deleteCollection(collection.id);
     await addAuditLog({ actorId: req.user.id, action: 'COLLECTION_DELETE', objectType: 'collection', objectId: String(collection.id), metadata: { name: collection.name, albums: albumIds.length, photos }, ipAddress: req.ip });
     res.json({ success: true });

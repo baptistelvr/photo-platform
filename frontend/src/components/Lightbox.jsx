@@ -1,5 +1,6 @@
 import {
-  ChevronLeft, ChevronRight, Download, FolderInput, Maximize, Minimize, Play, Star, Trash2, X, ZoomIn, ZoomOut,
+  ChevronLeft, ChevronRight, CopyPlus, Download, FolderInput, FolderMinus, Maximize, Minimize, Play, Star, Trash2, X, ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -76,6 +77,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, coverPhotoId, 
   };
 
   const isCover = coverPhotoId === photo.id;
+  const alsoIn = actions.alsoIn?.(photo) || [];
 
   return createPortal(
     <div
@@ -101,6 +103,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose, coverPhotoId, 
           <span>
             {index + 1} / {photos.length} · {photo.width}×{photo.height} · {formatBytes(photo.size)} · {formatDate(photo.createdAt)}
           </span>
+          {alsoIn.length > 0 && <span className="lightbox-also" title={alsoIn.join(', ')}>Aussi dans : {alsoIn.join(', ')}</span>}
         </div>
         <button type="button" className="icon-btn" onClick={() => setZoomed((z) => !z)} aria-label={zoomed ? 'Dézoomer' : 'Zoomer'} title={zoomed ? 'Dézoomer' : 'Zoomer'}>
           {zoomed ? <ZoomOut /> : <ZoomIn />}
@@ -130,6 +133,16 @@ export function Lightbox({ photos, index, onIndexChange, onClose, coverPhotoId, 
             title={isCover ? 'Couverture de l’album (première photo)' : 'Mettre en premier (couverture)'}
           >
             <Star />
+          </button>
+        )}
+        {actions.onCopy && (
+          <button type="button" className="icon-btn" onClick={() => actions.onCopy(photo)} aria-label="Ajouter aussi à d’autres albums" title="Ajouter à d’autres albums">
+            <CopyPlus />
+          </button>
+        )}
+        {actions.onRemove && alsoIn.length > 0 && (
+          <button type="button" className="icon-btn" onClick={() => actions.onRemove(photo)} aria-label="Retirer de cet album (la photo reste dans les autres)" title="Retirer de cet album">
+            <FolderMinus />
           </button>
         )}
         {actions.onMove && (

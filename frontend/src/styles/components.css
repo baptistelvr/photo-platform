@@ -756,3 +756,62 @@
   font-size: 13px;
   color: var(--text-muted);
 }
+
+/* ---------- Album picker ---------- */
+.picker-search {
+  margin-bottom: 14px;
+}
+
+.picker-list {
+  display: grid;
+  gap: 14px;
+  max-height: min(52vh, 460px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.picker-group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.picker-group legend {
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 7px 10px 7px calc(10px + var(--depth) * 20px);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.picker-item:hover {
+  background: var(--surface-hover);
+}
+
+.picker-item input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+
+.picker-item .truncate {
+  flex: 1;
+  min-width: 0;
+}
+
+.picker-count {
+  margin-right: auto;
+  font-size: 13px;
+}

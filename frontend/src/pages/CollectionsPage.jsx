@@ -68,7 +68,8 @@ export function CollectionsPage() {
       || (albums.data || []).some((a) => a.collectionId === c.id && matches(q, a.name)));
   }, [collections.data, albums.data, q]);
   const looseAlbums = useMemo(
-    () => albums.data?.filter((a) => !a.collectionId && matches(q, a.name, a.description)) ?? null,
+    // Top-level albums only: sub-albums are reached through their parent.
+    () => albums.data?.filter((a) => !a.collectionId && !a.depth && matches(q, a.name, a.description)) ?? null,
     [albums.data, q],
   );
 

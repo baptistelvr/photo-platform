@@ -1817,3 +1817,198 @@ a.wall-tile:hover {
 .sortable-overlay .reorder-tile {
   box-shadow: var(--shadow-lg);
 }
+
+/* ---------- Sub-albums inside an album ---------- */
+.album-section + .album-section {
+  margin-top: 36px;
+}
+
+.album-section > .section-title,
+.reorder-banner ~ .section-title,
+.album-section .section-title {
+  margin: 0 0 14px;
+  font-size: 1.05rem;
+  font-weight: 650;
+}
+
+.reorder-banner ~ .section-title {
+  margin-top: 28px;
+}
+
+.lightbox-also {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(244, 244, 245, 0.55);
+  font-size: 12.5px;
+}
+
+.tree-branch {
+  flex: none;
+  margin-right: -4px;
+  color: var(--text-muted);
+}
+
+.also-in-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.also-in-row .muted {
+  min-width: 0;
+  font-size: 13.5px;
+}
+
+/* ---------- Personnalisation ---------- */
+.site-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.site-form {
+  display: grid;
+  gap: 18px;
+}
+
+.site-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.02rem;
+}
+
+.site-heading svg {
+  width: 18px;
+  height: 18px;
+  color: var(--text-muted);
+}
+
+.theme-note {
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+.chosen-albums {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.chosen-albums ul {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chosen-albums li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  font-size: 14px;
+}
+
+.chosen-albums li .truncate {
+  flex: 1;
+  min-width: 0;
+}
+
+.site-actions {
+  position: sticky;
+  bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.site-preview {
+  position: sticky;
+  top: calc(var(--header-height) + 16px);
+  display: grid;
+  gap: 10px;
+}
+
+.site-preview-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 980px) {
+  .site-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .site-preview {
+    position: static;
+    order: -1;
+  }
+}
+
+.background-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
+  gap: 10px;
+}
+
+.background-choice {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+
+.background-choice svg {
+  width: 20px;
+  height: 20px;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+}
+
+.background-choice strong {
+  font-size: 14px;
+}
+
+.background-choice span {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.background-choice:hover {
+  border-color: var(--border-strong);
+}
+
+.background-choice.checked {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.background-choice.checked svg {
+  color: var(--accent);
+}

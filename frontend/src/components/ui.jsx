@@ -3,14 +3,25 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { avatarColor, initials } from '../lib/format';
 
-export function PageHeader({ title, subtitle, back, actions, children }) {
+/** `back` is one link above the title; `trail` a whole path (collection › parent › …), the last step being the way back. */
+export function PageHeader({ title, subtitle, back, trail, actions, children }) {
   return (
     <header className="page-header">
       <div>
-        {back && (
-          <Link to={back.to} className="eyebrow">
+        {trail?.length > 1 ? (
+          <nav className="eyebrow trail" aria-label="Fil d’Ariane">
             <ArrowLeft aria-hidden="true" />
-            {back.label}
+            {trail.map((step, index) => (
+              <span key={step.to}>
+                {index > 0 && <span className="trail-sep" aria-hidden="true">›</span>}
+                <Link to={step.to}>{step.label}</Link>
+              </span>
+            ))}
+          </nav>
+        ) : (back || trail?.[0]) && (
+          <Link to={(back || trail[0]).to} className="eyebrow">
+            <ArrowLeft aria-hidden="true" />
+            {(back || trail[0]).label}
           </Link>
         )}
         <h1>{title}</h1>

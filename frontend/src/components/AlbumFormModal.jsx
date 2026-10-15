@@ -2,6 +2,7 @@ import { Globe, Lock, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { albumOptionLabel } from '../lib/albums';
 import { api } from '../lib/api';
 import { Modal } from './Modal';
 import { Field, PasswordInput, Spinner } from './ui';
@@ -48,8 +49,27 @@ function AccessPicker({ selected, onChange }) {
   );
 }
 
+/** "c:<id>" = top level of a collection ("c:" = no collection), "a:<id>" = inside that album. */
+const placeOf = (collectionId, parentId) => (parentId ? `a:${parentId}` : `c:${collectionId ?? ''}`);
+
+/** The album itself and everything below it: it cannot be stored there. */
+function selfAndBelow(albums, albumId) {
+  const ids = new Set(albumId ? [albumId] : []);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const a of albums) {
+      if (a.parentId && ids.has(a.parentId) && !ids.has(a.id)) {
+        ids.add(a.id);
+        grew = true;
+      }
+    }
+  }
+  return ids;
+}
+
 /** Create (album = null) or edit an album. Calls onSaved(album) on success. */
-export function AlbumFormModal({ open, album, onClose, onSaved, defaultCollectionId = null }) {
+export function AlbumFormModal({ open, album, onClose, onSaved, defaultCollectionId = null, defaultParentId = null }) {
   const { hasPermission } = useAuth();
   const toast = useToast();
   const editing = Boolean(album);
@@ -59,10 +79,12 @@ export function AlbumFormModal({ open, album, onClose, onSaved, defaultCollectio
   // Album lists do not include access lists: fetch them before allowing an overwrite.
   const [accessUserIds, setAccessUserIds] = useState(null);
   const [collections, setCollections] = useState(null);
+  const [albums, setAlbums] = useState(null);
 
   useEffect(() => {
     if (!open) return;
     api.listCollections().then(setCollections).catch(() => setCollections([]));
+    api.listAlbums().then(setAlbums).catch(() => setAlbums([]));
   }, [open]);
 
   useEffect(() => {
@@ -74,7 +96,7 @@ export function AlbumFormModal({ open, album, onClose, onSaved, defaultCollectio
       visibility: album?.visibility || 'public',
       password: '',
       removePassword: false,
-      collectionId: String(album ? (album.collectionId ?? '') : (defaultCollectionId ?? '')),
+      place: album ? placeOf(album.collectionId, album.parentId) : placeOf(defaultCollectionId, defaultParentId),
     });
     if (!album) {
       setAccessUserIds([]);
@@ -92,7 +114,7 @@ export function AlbumFormModal({ open, album, onClose, onSaved, defaultCollectio
     return () => {
       active = false;
     };
-  }, [open, album, defaultCollectionId]);
+  }, [open, album, defaultCollectionId, defaultParentId]);
 
   const set = (key) => (value) => setForm((current) => ({ ...current, [key]: value }));
   const canPickUsers = hasPermission('MANAGE_USERS');
@@ -103,11 +125,14 @@ export function AlbumFormModal({ open, album, onClose, onSaved, defaultCollectio
       setError('Le mot de passe de l’album doit contenir au moins 8 caractères.');
       return;
     }
+    const [kind, rawId] = form.place.split(':');
+    const parent = kind === 'a' ? (albums || []).find((a) => a.id === Number(rawId)) : null;
     const body = {
       name: form.name.trim(),
       description: form.description.trim(),
       visibility: form.visibility,
-      collectionId: form.collectionId ? Number(form.collectionId) : null,
+      collectionId: parent ? parent.collectionId : (rawId ? Number(rawId) : null),
+      parentId: parent ? parent.id : null,
       ...(form.visibility === 'protected' && form.password ? { password: form.password } : {}),
       ...(form.visibility === 'protected' && form.removePassword ? { removePassword: true } : {}),
       ...(canPickUsers && form.visibility === 'protected' && accessUserIds ? { accessUserIds } : {}),
@@ -158,16 +183,36 @@ export function AlbumFormModal({ open, album, onClose, onSaved, defaultCollectio
               placeholder="Vacances d’été, Mariage de Léa…"
             />
           </Field>
-          <Field label="Collection" htmlFor="album-collection" hint={collections && !collections.length ? 'Aucune collection pour l’instant : créez-en une depuis la page Collections.' : undefined}>
+          <Field
+            label="Ranger dans"
+            htmlFor="album-place"
+            hint={editing && album.subAlbumsCount ? 'Ses sous-albums le suivent.' : 'Une collection, ou un autre album pour en faire un sous-album.'}
+          >
             <select
-              id="album-collection"
+              id="album-place"
               className="select"
-              value={form.collectionId}
-              onChange={(e) => set('collectionId')(e.target.value)}
-              disabled={!collections}
+              value={form.place}
+              onChange={(e) => set('place')(e.target.value)}
+              disabled={!collections || !albums}
             >
-              <option value="">Aucune collection</option>
-              {(collections || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              <option value="c:">Aucune collection</option>
+              {(() => {
+                const blocked = selfAndBelow(albums || [], album?.id);
+                const inside = (collectionId) => (albums || [])
+                  .filter((a) => (a.collectionId ?? null) === collectionId && !blocked.has(a.id))
+                  .map((a) => <option key={a.id} value={`a:${a.id}`}>{albumOptionLabel({ ...a, depth: (a.depth || 0) + 1 })}</option>);
+                return (
+                  <>
+                    {inside(null)}
+                    {(collections || []).map((c) => (
+                      <optgroup key={c.id} label={c.name}>
+                        <option value={`c:${c.id}`}>{c.name} (premier niveau)</option>
+                        {inside(c.id)}
+                      </optgroup>
+                    ))}
+                  </>
+                );
+              })()}
             </select>
           </Field>
           <Field label="Description" htmlFor="album-description" hint="Facultative">

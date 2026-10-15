@@ -3,8 +3,8 @@ const albumRepository = require('../repositories/albumRepository');
 const { addAuditLog } = require('../repositories/auditRepository');
 const collectionRepository = require('../repositories/collectionRepository');
 const photoRepository = require('../repositories/photoRepository');
-const { hasPermission, resolveAlbumAccess, filterVisibleAlbums } = require('../services/accessService');
-const storageService = require('../services/storageService');
+const { hasPermission, resolveAlbumAccess } = require('../services/accessService');
+const { destroyAlbums, relocateAlbumPhotos, visibleAlbumTree } = require('../services/albumService');
 const { PERMISSIONS } = require('../constants/permissions');
 const { HttpError } = require('../utils/httpError');
 const { parseId } = require('../utils/params');
@@ -26,29 +26,6 @@ async function assertCollectionExists(collectionId) {
   }
 }
 
-/**
- * Files live under Pictures/<collection>/<album>/…; after a rename or a change of
- * collection, move each photo of the album to its new folder (a few at a time).
- */
-async function relocateAlbumPhotos(albumId) {
-  const album = await albumRepository.getAlbumById(albumId);
-  const photos = await albumRepository.listAlbumPhotos(albumId);
-  for (let i = 0; i < photos.length; i += 8) {
-    await Promise.all(photos.slice(i, i + 8).map(async (photo) => {
-      const paths = await storageService.movePhotoFiles(photo, album);
-      if (paths.originalPath !== photo.originalPath) await photoRepository.updatePaths(photo.id, paths);
-    }));
-  }
-}
-
-/** Deletes an album, its photo files and its rows. */
-async function destroyAlbum(album) {
-  const photos = await albumRepository.listAlbumPhotos(album.id);
-  await storageService.deletePhotoFiles(photos);
-  await albumRepository.deleteAlbum(album.id);
-  return photos.length;
-}
-
 async function loadAlbum(id) {
   const album = await albumRepository.getAlbumById(parseId(id, 'Album'));
   if (!album) throw new HttpError(404, 'NOT_FOUND', 'Album introuvable');
@@ -66,9 +43,10 @@ async function loadReadableAlbum(req, id) {
   return album;
 }
 
+/** Every album the viewer may open, parents followed by their sub-albums. */
 async function listAlbums(req, res, next) {
   try {
-    const albums = await filterVisibleAlbums(req, await albumRepository.listAlbums());
+    const albums = await visibleAlbumTree(req);
     res.set('Cache-Control', 'no-store');
     res.json({ success: true, data: albums.map((album) => publicAlbum(album)) });
   } catch (error) {
@@ -79,11 +57,16 @@ async function listAlbums(req, res, next) {
 async function getAlbum(req, res, next) {
   try {
     const album = await loadReadableAlbum(req, req.params.id);
-    const extra = hasPermission(req.user, PERMISSIONS.EDIT_ALBUMS)
-      ? { accessUserIds: await albumRepository.getAlbumAccessUserIds(album.id) }
-      : {};
+    // Its visible sub-albums and parents come from the viewer's tree.
+    const node = (await visibleAlbumTree(req)).find((item) => item.id === album.id) || { ...album, children: [] };
+    const extra = {
+      subAlbums: node.children.map((child) => publicAlbum(child)),
+      ...(hasPermission(req.user, PERMISSIONS.EDIT_ALBUMS)
+        ? { accessUserIds: await albumRepository.getAlbumAccessUserIds(album.id) }
+        : {}),
+    };
     res.set('Cache-Control', 'no-store');
-    res.json({ success: true, data: publicAlbum(album, extra) });
+    res.json({ success: true, data: publicAlbum(node, extra) });
   } catch (error) {
     next(error);
   }
@@ -100,17 +83,27 @@ async function listAlbumPhotos(req, res, next) {
   }
 }
 
+/** A sub-album lives in its parent's collection. */
+async function loadParent(parentId) {
+  const parent = await albumRepository.getAlbumById(parentId);
+  if (!parent) throw new HttpError(400, 'INVALID_PARENT', 'Album parent introuvable');
+  return parent;
+}
+
 async function createAlbum(req, res, next) {
   try {
     const payload = albumSchema.parse(req.body);
-    await assertCollectionExists(payload.collectionId);
+    let { collectionId } = payload;
+    if (payload.parentId) collectionId = (await loadParent(payload.parentId)).collectionId;
+    else await assertCollectionExists(collectionId);
     const passwordHash = payload.visibility === 'protected' && payload.password ? await hashPassword(payload.password) : null;
     const album = await albumRepository.createAlbum({
       name: payload.name,
       description: payload.description,
       visibility: payload.visibility,
       passwordHash,
-      collectionId: payload.collectionId,
+      collectionId,
+      parentId: payload.parentId || null,
     });
 
     if (payload.accessUserIds?.length) await albumRepository.setAlbumAccess(album.id, payload.accessUserIds);
@@ -133,15 +126,23 @@ async function updateAlbum(req, res, next) {
 
     // The cover is the first photo: choosing one moves it to the front.
     if (payload.coverPhotoId) {
-      const cover = await photoRepository.getPhotoById(payload.coverPhotoId);
-      if (!cover || cover.albumId !== current.id) throw new HttpError(400, 'INVALID_COVER', 'La couverture doit être une photo de cet album');
       const ids = (await albumRepository.listAlbumPhotos(current.id)).map((photo) => photo.id);
-      await db.transaction((run) => photoRepository.reorderPhotos(mergeOrder([cover.id], ids), run));
+      if (!ids.includes(payload.coverPhotoId)) throw new HttpError(400, 'INVALID_COVER', 'La couverture doit être une photo de cet album');
+      await db.transaction((run) => photoRepository.reorderPhotos(current.id, mergeOrder([payload.coverPhotoId], ids), run));
     }
 
-    // undefined keeps the current collection, null takes the album out of it.
-    const collectionId = payload.collectionId === undefined ? current.collectionId : payload.collectionId;
-    if (collectionId !== current.collectionId) await assertCollectionExists(collectionId);
+    // undefined keeps the current place, null takes the album out of its parent (or collection).
+    const parentId = payload.parentId === undefined ? current.parentId : payload.parentId;
+    let collectionId;
+    if (parentId) {
+      if (parentId === current.id || (await albumRepository.listDescendantIds(current.id)).includes(parentId)) {
+        throw new HttpError(400, 'INVALID_PARENT', 'Un album ne peut pas être rangé dans lui-même ni dans un de ses sous-albums');
+      }
+      collectionId = (await loadParent(parentId)).collectionId;
+    } else {
+      collectionId = payload.collectionId === undefined ? current.collectionId : payload.collectionId;
+      if (collectionId !== current.collectionId) await assertCollectionExists(collectionId);
+    }
 
     let updated = await albumRepository.updateAlbum(current.id, {
       name: payload.name,
@@ -149,9 +150,10 @@ async function updateAlbum(req, res, next) {
       visibility: payload.visibility,
       passwordHash,
       collectionId,
+      parentId: parentId || null,
     });
 
-    if (current.name !== updated.name || current.collectionId !== updated.collectionId) {
+    if (current.name !== updated.name || current.collectionId !== updated.collectionId || current.parentId !== updated.parentId) {
       await relocateAlbumPhotos(current.id);
       updated = await albumRepository.getAlbumById(current.id);
     }
@@ -168,12 +170,17 @@ async function updateAlbum(req, res, next) {
   }
 }
 
-/** New order of the albums of one collection (or of the albums without collection). */
+/**
+ * New order of albums sharing a place: the sub-albums of `parentId`, or else the
+ * top-level albums of a collection (or those without collection).
+ */
 async function reorderAlbums(req, res, next) {
   try {
     const payload = albumOrderSchema.parse(req.body);
-    await assertCollectionExists(payload.collectionId);
-    const ids = mergeOrder(payload.ids, await albumRepository.listAlbumIdsInCollection(payload.collectionId));
+    if (payload.parentId) await loadParent(payload.parentId);
+    else await assertCollectionExists(payload.collectionId);
+    const siblings = await albumRepository.listSiblingIds({ parentId: payload.parentId, collectionId: payload.collectionId });
+    const ids = mergeOrder(payload.ids, siblings);
     await db.transaction((run) => albumRepository.reorderAlbums(ids, run));
     res.json({ success: true, data: { ids } });
   } catch (error) {
@@ -187,7 +194,7 @@ async function reorderPhotos(req, res, next) {
     const album = await loadAlbum(req.params.id);
     const payload = orderSchema.parse(req.body);
     const ids = mergeOrder(payload.ids, (await albumRepository.listAlbumPhotos(album.id)).map((photo) => photo.id));
-    await db.transaction((run) => photoRepository.reorderPhotos(ids, run));
+    await db.transaction((run) => photoRepository.reorderPhotos(album.id, ids, run));
     res.json({ success: true, data: { ids, coverPhotoId: ids[0] ?? null } });
   } catch (error) {
     next(error);
@@ -197,7 +204,7 @@ async function reorderPhotos(req, res, next) {
 async function deleteAlbum(req, res, next) {
   try {
     const album = await loadAlbum(req.params.id);
-    const photos = await destroyAlbum(album);
+    const photos = await destroyAlbums([album.id]);
     await addAuditLog({ actorId: req.user.id, action: 'ALBUM_DELETE', objectType: 'album', objectId: String(album.id), metadata: { name: album.name, photos }, ipAddress: req.ip });
     res.json({ success: true });
   } catch (error) {
@@ -206,8 +213,7 @@ async function deleteAlbum(req, res, next) {
 }
 
 module.exports = {
-  relocateAlbumPhotos,
-  destroyAlbum,
+  accessErrors,
   loadAlbum,
   loadReadableAlbum,
   listAlbums,

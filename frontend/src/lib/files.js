@@ -128,20 +128,29 @@ export function groupIntoAlbums(items, { rootIsContainer } = {}) {
     : null;
   const container = root ? (rootIsContainer ?? root.container) : false;
 
+  // Collection / album / sub-album / sub-sub-album…: one group per folder holding photos.
   const label = (value) => value.trim().slice(0, 120) || 'Sans titre';
   const albums = new Map();
   for (const { file, dirs } of withDirs) {
     const rel = container && dirs.length > 1 ? dirs.slice(1) : dirs;
     const collectionName = label(rel[0]);
-    const albumName = label(rel[1] ?? rel[0]);
+    const path = (rel.length > 1 ? rel.slice(1) : [rel[0]]).map(label);
     const collectionKey = normalizeName(collectionName);
-    const key = `${collectionKey}/${normalizeName(albumName)}`;
-    if (!albums.has(key)) albums.set(key, { key, collectionKey, collectionName, name: albumName, files: [] });
+    const key = [collectionKey, ...path.map(normalizeName)].join('/');
+    if (!albums.has(key)) albums.set(key, { key, collectionKey, collectionName, path, name: path[path.length - 1], files: [] });
     albums.get(key).files.push(file);
   }
 
+  // Parents before their sub-albums, names in natural order at each level.
   const byName = (a, b) => a.localeCompare(b, 'fr', { numeric: true });
-  const sorted = [...albums.values()].sort((a, b) => byName(a.collectionName, b.collectionName) || byName(a.name, b.name));
+  const byPath = (a, b) => {
+    for (let i = 0; i < Math.min(a.length, b.length); i += 1) {
+      const order = byName(a[i], b[i]);
+      if (order) return order;
+    }
+    return a.length - b.length;
+  };
+  const sorted = [...albums.values()].sort((a, b) => byName(a.collectionName, b.collectionName) || byPath(a.path, b.path));
   return { albums: sorted, loose, skipped, root };
 }
 

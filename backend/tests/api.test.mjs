@@ -60,7 +60,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  for (const table of ['album_access', 'photos', 'albums', 'collections', 'user_permissions', 'audit_logs', 'users']) {
+  for (const table of ['site_settings', 'album_photos', 'album_access', 'photos', 'albums', 'collections', 'user_permissions', 'audit_logs', 'users']) {
     await db.query(`DELETE FROM ${table}`);
   }
   fs.rmSync(path.join(tempDir, 'Pictures'), { recursive: true, force: true });
@@ -466,9 +466,10 @@ describe('manual order', () => {
     const b = await upload(agent, zebre.id, 'b.jpg');
     await upload(agent, zebre.id, 'c.jpg');
 
-    // Back to the state before manual ordering: no order, a hand-picked cover.
+    // Back to the state before manual ordering: no order, a hand-picked cover, one album per photo.
+    await db.query('DELETE FROM album_photos');
     await db.query('UPDATE photos SET sort_order = NULL');
-    await db.query('UPDATE albums SET sort_order = NULL, cover_photo_id = CASE WHEN id = $1 THEN $2 ELSE NULL END', [zebre.id, b.id]);
+    await db.query('UPDATE albums SET sort_order = NULL, cover_photo_id = CASE WHEN id = $1 THEN CAST($2 AS INTEGER) ELSE NULL END', [zebre.id, b.id]);
     await db.query('UPDATE collections SET sort_order = NULL');
     await require('../src/db/migrate').migrate();
 
@@ -477,6 +478,153 @@ describe('manual order', () => {
     expect((await request(app).get(`/api/collections/${collection.id}`)).body.data.albums.map((x) => x.name))
       .toEqual(['avion', 'Été 9', 'Été 10', 'Zèbre']);
     expect(a.id).toBeLessThan(b.id);
+  });
+});
+
+describe('sub-albums', () => {
+  it('nests albums as deep as wanted, with their own photos, order and cover', async () => {
+    const admin = await createUser({ role: 'main_admin' });
+    const agent = await signIn(admin);
+    const voyages = (await agent.post('/api/collections').send({ name: 'Voyages' })).body.data;
+    const create = async (name, extra) => (await agent.post('/api/albums').send({ name, visibility: 'public', ...extra })).body.data;
+    const cuba = await create('Cuba', { collectionId: voyages.id });
+    const havane = await create('La Havane', { parentId: cuba.id });
+    const vieille = await create('Vieille ville', { parentId: havane.id });
+    const trinidad = await create('Trinidad', { parentId: cuba.id });
+    expect(vieille.collectionId).toBe(voyages.id);
+    const photo = (await agent.post(`/api/albums/${vieille.id}/photos`).attach('photos', await jpeg(), { filename: 'capitole.jpg', contentType: 'image/jpeg' })).body.data[0];
+    // Files go in the folder of the whole chain.
+    expect(fs.readdirSync(path.join(tempDir, 'Pictures', 'Voyages', 'Cuba', 'La Havane', 'Vieille ville', 'original'))).toHaveLength(1);
+
+    // The collection shows its top-level album only, whose cover comes from deep inside.
+    const collection = (await request(app).get(`/api/collections/${voyages.id}`)).body.data;
+    expect(collection.albums.map((a) => a.name)).toEqual(['Cuba']);
+    expect(collection.coverPhotoId).toBe(photo.id);
+
+    const album = (await request(app).get(`/api/albums/${havane.id}`)).body.data;
+    expect(album.ancestors.map((a) => a.name)).toEqual(['Cuba']);
+    expect(album.subAlbums.map((a) => a.name)).toEqual(['Vieille ville']);
+    expect(album.coverPhotoId).toBe(photo.id);
+    expect((await request(app).get(`/api/albums/${cuba.id}`)).body.data.subAlbums.map((a) => a.name)).toEqual(['La Havane', 'Trinidad']);
+
+    // The flat list reads parents before their sub-albums.
+    expect((await request(app).get('/api/albums')).body.data.map((a) => `${a.depth}:${a.name}`))
+      .toEqual(['0:Cuba', '1:La Havane', '2:Vieille ville', '1:Trinidad']);
+
+    // Sub-albums are reordered among themselves.
+    expect((await agent.put('/api/albums/order').send({ collectionId: voyages.id, parentId: cuba.id, ids: [trinidad.id, havane.id] })).status).toBe(200);
+    expect((await request(app).get(`/api/albums/${cuba.id}`)).body.data.subAlbums.map((a) => a.name)).toEqual(['Trinidad', 'La Havane']);
+    expect((await agent.put('/api/albums/order').send({ collectionId: voyages.id, parentId: cuba.id, ids: [vieille.id] })).status).toBe(400);
+
+    // An album cannot go inside itself; renaming a parent moves the files below it.
+    expect((await agent.put(`/api/albums/${cuba.id}`).send({ name: 'Cuba', visibility: 'public', parentId: vieille.id })).status).toBe(400);
+    expect((await agent.put(`/api/albums/${havane.id}`).send({ name: 'Havane', visibility: 'public' })).status).toBe(200);
+    expect(fs.readdirSync(path.join(tempDir, 'Pictures', 'Voyages', 'Cuba', 'Havane', 'Vieille ville', 'original'))).toHaveLength(1);
+    expect((await request(app).get(`/api/photos/${photo.id}/file`)).status).toBe(200);
+
+    // Moving a branch to another collection takes its sub-albums along.
+    const famille = (await agent.post('/api/collections').send({ name: 'Famille' })).body.data;
+    await agent.put(`/api/albums/${havane.id}`).send({ name: 'Havane', visibility: 'public', parentId: null, collectionId: famille.id });
+    expect((await request(app).get(`/api/albums/${vieille.id}`)).body.data.collectionId).toBe(famille.id);
+    expect((await request(app).get(`/api/collections/${famille.id}`)).body.data.albums.map((a) => a.name)).toEqual(['Havane']);
+
+    // Deleting an album deletes its sub-albums and their photos.
+    expect((await agent.delete(`/api/albums/${havane.id}`)).status).toBe(200);
+    expect((await request(app).get(`/api/albums/${vieille.id}`)).status).toBe(404);
+    expect((await request(app).get(`/api/photos/${photo.id}/file`)).status).toBe(404);
+  });
+});
+
+describe('photos in several albums', () => {
+  it('shows one photo in several albums without copying its file', async () => {
+    const admin = await createUser({ role: 'main_admin' });
+    const agent = await signIn(admin);
+    const create = async (name, visibility = 'public') => (await agent.post('/api/albums').send({ name, visibility, ...(visibility === 'protected' ? { password: 'secret-album' } : {}) })).body.data;
+    const rome = await create('Rome');
+    const best = await create('Best of');
+    const prive = await create('Privé', 'protected');
+    const other = await create('Archives');
+    const [photo] = (await agent.post(`/api/albums/${prive.id}/photos`)
+      .field('alsoIn', String(other.id))
+      .attach('photos', await jpeg(), { filename: 'colisee.jpg', contentType: 'image/jpeg' })).body.data;
+    expect(photo.albumIds).toEqual([prive.id, other.id].sort((a, b) => a - b));
+
+    // Not public yet: protected album only... and Archives (public).
+    expect((await request(app).get(`/api/albums/${other.id}/photos`)).body.data.map((p) => p.id)).toEqual([photo.id]);
+
+    const viewer = await signIn(await createUser({ permissions: ['VIEW_PUBLIC_ALBUMS'] }));
+    expect((await viewer.post(`/api/photos/${photo.id}/albums`).send({ albumIds: [best.id] })).status).toBe(403);
+    const copied = await agent.post(`/api/photos/${photo.id}/albums`).send({ albumIds: [rome.id, best.id] });
+    expect(copied.status).toBe(200);
+    expect(copied.body.data.albumIds).toHaveLength(4);
+    const files = () => fs.readdirSync(path.join(tempDir, 'Pictures'), { recursive: true }).filter((f) => String(f).endsWith('.jpg'));
+    expect(files()).toHaveLength(2); // one original, one thumbnail
+
+    // Readable through a public album even though it lives in a protected one.
+    expect((await request(app).get(`/api/photos/${photo.id}/thumbnail`)).status).toBe(200);
+    const listed = (await request(app).get(`/api/albums/${best.id}/photos`)).body.data[0];
+    expect(listed.albumIds).toHaveLength(4);
+
+    // Taking it out of its home album moves the files to another of its albums.
+    expect((await agent.delete(`/api/albums/${prive.id}/photos/${photo.id}`)).status).toBe(200);
+    expect((await request(app).get(`/api/albums/${prive.id}/photos`, { headers: {} })).status).toBe(403);
+    expect((await agent.get(`/api/albums/${prive.id}/photos`)).body.data).toHaveLength(0);
+    expect((await request(app).get(`/api/photos/${photo.id}/file`)).status).toBe(200);
+
+    // Moving from one album to another: leaves Rome, joins nothing new if already there.
+    const moved = await agent.post('/api/photos/move').send({ photoId: photo.id, fromAlbumId: rome.id, targetAlbumId: best.id });
+    expect(moved.status).toBe(200);
+    expect(moved.body.data.albumIds).not.toContain(rome.id);
+
+    // Its last album cannot be left; deleting an album keeps photos shown elsewhere.
+    expect((await agent.delete(`/api/albums/${best.id}`)).status).toBe(200);
+    expect((await agent.delete(`/api/albums/${other.id}/photos/${photo.id}`)).status).toBe(400);
+    expect((await request(app).get(`/api/photos/${photo.id}/file`)).status).toBe(200);
+    expect(files()).toHaveLength(2);
+
+    expect((await agent.delete(`/api/photos/${photo.id}`)).status).toBe(200);
+    expect(files()).toHaveLength(0);
+  });
+});
+
+describe('site settings', () => {
+  it('stores the home page texts, theme and wall source, and feeds the wall from chosen albums only', async () => {
+    const admin = await createUser({ role: 'main_admin' });
+    const agent = await signIn(admin);
+    const defaults = (await request(app).get('/api/settings/site')).body.data;
+    expect(defaults).toMatchObject({ heroTitle: '', theme: 'classique', background: 'mosaique', showcase: { mode: 'all', albumIds: [] } });
+    expect((await agent.put('/api/settings/site').send({ background: 'confettis' })).status).toBe(400);
+    expect((await agent.put('/api/settings/site').send({ background: 'polaroids' })).body.data.background).toBe('polaroids');
+
+    const create = async (name, visibility = 'public') => (await agent.post('/api/albums').send({ name, visibility, ...(visibility === 'protected' ? { password: 'secret-album' } : {}) })).body.data;
+    const best = await create('Best of');
+    const sub = (await agent.post('/api/albums').send({ name: 'Best of 2024', visibility: 'public', parentId: best.id })).body.data;
+    const autre = await create('Autre');
+    const secret = await create('Secret', 'protected');
+    const up = async (albumId, name) => (await agent.post(`/api/albums/${albumId}/photos`).attach('photos', await jpeg(), { filename: name, contentType: 'image/jpeg' })).body.data[0];
+    const p1 = await up(best.id, 'a.jpg');
+    const p2 = await up(sub.id, 'b.jpg');
+    await up(autre.id, 'c.jpg');
+    await up(secret.id, 'd.jpg');
+
+    const all = (await request(app).get('/api/photos/showcase')).body.data;
+    expect(all.totalPhotos).toBe(3);
+
+    const viewer = await signIn(await createUser({ permissions: ['VIEW_PUBLIC_ALBUMS'] }));
+    expect((await viewer.put('/api/settings/site').send({ theme: 'noel' })).status).toBe(403);
+    expect((await agent.put('/api/settings/site').send({ theme: 'carnaval' })).status).toBe(400);
+    const saved = await agent.put('/api/settings/site').send({
+      heroTitle: 'Nos voyages', heroSubtitle: 'en images', heroText: 'Bienvenue !', theme: 'noel',
+      showcase: { mode: 'albums', albumIds: [best.id, secret.id, 999999] },
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.body.data.showcase.albumIds).toEqual([best.id, secret.id]);
+    expect((await request(app).get('/api/settings/site')).body.data).toMatchObject({ heroTitle: 'Nos voyages', theme: 'noel' });
+
+    // Best of and its sub-album; the protected album never shows on the wall.
+    const wall = (await request(app).get('/api/photos/showcase')).body.data;
+    expect(wall.photos.map((p) => p.id).sort()).toEqual([p1.id, p2.id].sort());
+    expect(wall.totalPhotos).toBe(2);
   });
 });
 

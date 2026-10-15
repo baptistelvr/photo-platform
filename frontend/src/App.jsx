@@ -18,6 +18,7 @@ const ManageAlbumsPage = named(() => import('./pages/ManageAlbumsPage'), 'Manage
 const ManageUsersPage = named(() => import('./pages/ManageUsersPage'), 'ManageUsersPage');
 const AdminLogsPage = named(() => import('./pages/AdminLogsPage'), 'AdminLogsPage');
 const StoragePage = named(() => import('./pages/StoragePage'), 'StoragePage');
+const SitePage = named(() => import('./pages/SitePage'), 'SitePage');
 
 function Protected({ children, anyOf }) {
   const { loading, isAuthenticated, hasAnyPermission } = useAuth();
@@ -45,6 +46,7 @@ export default function App() {
         />
         <Route path="manage/users" element={<Protected anyOf={['MANAGE_USERS']}><ManageUsersPage /></Protected>} />
         <Route path="admin/logs" element={<Protected anyOf={['MANAGE_PERMISSIONS']}><AdminLogsPage /></Protected>} />
+        <Route path="admin/site" element={<Protected anyOf={['MANAGE_PERMISSIONS']}><SitePage /></Protected>} />
         <Route path="admin/storage" element={<Protected anyOf={['MANAGE_PERMISSIONS']}><StoragePage /></Protected>} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

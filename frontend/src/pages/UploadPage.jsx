@@ -1,13 +1,14 @@
 import {
-  CircleCheck, CircleX, CloudUpload, Folder, FolderOpen, FolderPlus, Globe, Library, LoaderCircle, Lock, Square, X,
+  CircleCheck, CircleX, CloudUpload, CopyPlus, Folder, FolderOpen, FolderPlus, Globe, Library, LoaderCircle, Lock, Square, X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AlbumFormModal } from '../components/AlbumFormModal';
+import { AlbumPickerModal } from '../components/AlbumPickerModal';
 import { PageHeader, PageLoader, Spinner } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
-import { groupAlbumsByCollection } from '../lib/albums';
+import { albumLabel, albumOptionLabel, groupAlbumsByCollection } from '../lib/albums';
 import { api, ApiError } from '../lib/api';
 import {
   MAX_UPLOAD_BYTES, captureDrop, filesFromDrop, filesFromInput, groupIntoAlbums, isHiddenFile, isJpegFile,
@@ -23,7 +24,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * Reads the photo once, shrinks it if needed and uploads it, retrying transient
  * failures (network, 429, 5xx).
  */
-async function sendPhoto(albumId, file, autoResize) {
+async function sendPhoto(albumId, file, autoResize, alsoIn = []) {
   let source;
   try {
     // In memory from here on: a clear message if the disk refuses the read (file moved,
@@ -44,7 +45,7 @@ async function sendPhoto(albumId, file, autoResize) {
 
   for (let attempt = 1; ; attempt += 1) {
     try {
-      return await api.uploadPhoto(albumId, prepared);
+      return await api.uploadPhoto(albumId, prepared, undefined, alsoIn);
     } catch (error) {
       if (attempt >= 3 || !RETRYABLE(error)) throw error;
       await wait(attempt * 2000);
@@ -65,7 +66,19 @@ function StatusIcon({ status }) {
   return null;
 }
 
-/* ---------- Folder import: collection › album › photos ---------- */
+/* ---------- Folder import: collection › album › sub-albums › photos ---------- */
+
+/** Follows a path of album names (album, sub-album…) inside a collection; null when a step is missing. */
+function findAlbumByPath(albums, collectionId, path) {
+  let parent = null;
+  for (const name of path) {
+    const found = albums.find((a) => (parent ? a.parentId === parent.id : !a.parentId && a.collectionId === collectionId)
+      && normalizeName(a.name) === normalizeName(name));
+    if (!found) return null;
+    parent = found;
+  }
+  return parent;
+}
 
 function AlbumRow({ group, running, autoResize, onToggle }) {
   const tooBig = autoResize ? 0 : group.files.filter((f) => f.file.size > MAX_UPLOAD_BYTES).length;
@@ -84,14 +97,17 @@ function AlbumRow({ group, running, autoResize, onToggle }) {
         onChange={(e) => onToggle(e.target.checked)}
         aria-label={`Importer l’album ${group.name}`}
       />
-      <div className="cell-main">
+      <div className="cell-main" style={group.path.length > 1 ? { paddingLeft: (group.path.length - 1) * 24 } : undefined}>
         <Folder aria-hidden="true" className="folder-icon" />
         <div>
-          <div className="cell-title truncate">{group.name}</div>
+          <div className="cell-title truncate" title={group.path.join(' › ')}>
+            {group.path.length > 1 && <span className="muted">{group.path.slice(0, -1).join(' › ')} › </span>}
+            {group.name}
+          </div>
           <div className="cell-sub">
             {group.albumId
-              ? <span className="badge">Album existant</span>
-              : <span className="badge badge-accent">Nouvel album</span>}
+              ? <span className="badge">{group.path.length > 1 ? 'Sous-album existant' : 'Album existant'}</span>
+              : <span className="badge badge-accent">{group.path.length > 1 ? 'Nouveau sous-album' : 'Nouvel album'}</span>}
             {already > 0 && <span> · {pluralize(already, 'déjà présente', 'déjà présentes')}</span>}
             {toShrink > 0 && done < eligible && <span> · {pluralize(toShrink, 'photo sera réduite', 'photos seront réduites')}</span>}
             {tooBig > 0 && <span className="error-text"> · {pluralize(tooBig, 'photo trop lourde', 'photos trop lourdes')} (&gt; 1 Mo)</span>}
@@ -200,6 +216,9 @@ export function UploadPage() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [creating, setCreating] = useState(false);
+  // Other albums every imported photo also goes into (same file, shown in several places).
+  const [alsoIn, setAlsoIn] = useState([]);
+  const [pickingAlsoIn, setPickingAlsoIn] = useState(false);
 
   const itemsRef = useRef(items);
   useEffect(() => {
@@ -250,8 +269,7 @@ export function UploadPage() {
     const collectionsByName = new Map(collections.map((c) => [normalizeName(c.name), c]));
     const albumFor = (group) => {
       const collection = collectionsByName.get(group.collectionKey);
-      if (!collection) return null;
-      return albums.find((a) => a.collectionId === collection.id && normalizeName(a.name) === normalizeName(group.name)) || null;
+      return collection ? findAlbumByPath(albums, collection.id, group.path) : null;
     };
 
     // Photos already in an existing album (same file name) are skipped, so an
@@ -275,6 +293,7 @@ export function UploadPage() {
         return {
           key: group.key,
           name: group.name,
+          path: group.path,
           collectionKey: group.collectionKey,
           collectionName: group.collectionName,
           collectionId: collectionsByName.get(group.collectionKey)?.id || null,
@@ -354,7 +373,7 @@ export function UploadPage() {
     await runPool(queue.map((item) => async () => {
       updateItem(item.key, { status: 'uploading' });
       try {
-        await sendPhoto(albumId, item.file, autoResize);
+        await sendPhoto(albumId, item.file, autoResize, alsoIn.filter((otherId) => String(otherId) !== String(albumId)));
         updateItem(item.key, { status: 'done', message: null });
         succeeded += 1;
       } catch (error) {
@@ -400,6 +419,21 @@ export function UploadPage() {
     const groups = batch.groups.filter((g) => g.include);
     const targets = new Map();
     const collectionIds = new Map(groups.filter((g) => g.collectionId).map((g) => [g.collectionKey, g.collectionId]));
+    // Albums known so far (existing + created during this import), to build each chain once.
+    const known = [...albums];
+    const ensurePath = async (path, collectionId) => {
+      let parentId = null;
+      for (let depth = 1; depth <= path.length; depth += 1) {
+        let album = findAlbumByPath(known, collectionId, path.slice(0, depth));
+        if (!album) {
+          album = await api.createAlbum({ name: path[depth - 1], visibility: newVisibility, collectionId, parentId });
+          known.push(album);
+          setAlbums((list) => [...list, album]);
+        }
+        parentId = album.id;
+      }
+      return parentId;
+    };
 
     // 1. Make sure every collection and album exists (created once, before any upload).
     for (const group of groups) {
@@ -419,16 +453,15 @@ export function UploadPage() {
           setCollections((list) => [...list, collection]);
         }
         const collectionId = collectionIds.get(group.collectionKey);
-        const album = await api.createAlbum({ name: group.name, visibility: newVisibility, collectionId });
-        targets.set(group.key, album.id);
+        const albumId = await ensurePath(group.path, collectionId);
+        targets.set(group.key, albumId);
         setBatch((b) => ({
           ...b,
           groups: b.groups.map((g) => {
-            if (g.key === group.key) return { ...g, albumId: album.id, collectionId, error: null };
+            if (g.key === group.key) return { ...g, albumId, collectionId, error: null };
             return g.collectionKey === group.collectionKey ? { ...g, collectionId } : g;
           }),
         }));
-        setAlbums((list) => [album, ...list]);
       } catch (error) {
         setGroup(group.key, { error: error.message });
         if (error.status === 401 || error.status === 403) stopRequested.current = true;
@@ -447,7 +480,7 @@ export function UploadPage() {
       setFile(group.key, f.key, { status: 'uploading' });
       setGroup(group.key, { status: 'uploading' });
       try {
-        await sendPhoto(targets.get(group.key), f.file, autoResize);
+        await sendPhoto(targets.get(group.key), f.file, autoResize, alsoIn.filter((otherId) => otherId !== targets.get(group.key)));
         setFile(group.key, f.key, { status: 'done', message: null });
         succeeded += 1;
       } catch (error) {
@@ -499,7 +532,7 @@ export function UploadPage() {
                   <optgroup key={group.key} label={group.label}>
                     {group.albums.map((album) => (
                       <option key={album.id} value={album.id}>
-                        {album.name} ({pluralize(album.photosCount, 'photo')})
+                        {albumOptionLabel(album)} ({pluralize(album.photosCount, 'photo')})
                       </option>
                     ))}
                   </optgroup>
@@ -587,6 +620,21 @@ export function UploadPage() {
               <small>Elles sont redimensionnées dans votre navigateur avant l’envoi. Vos fichiers d’origine ne sont pas modifiés.</small>
             </span>
           </label>
+          {hasPermission('MOVE_PHOTOS') && albums.length > 0 && (
+            <div className="field also-in">
+              <span className="field-label">Ajouter aussi dans</span>
+              <div className="also-in-row">
+                <span className="muted">
+                  {alsoIn.length
+                    ? alsoIn.map((otherId) => albumLabel(albums.find((a) => a.id === otherId) || { name: '?' })).join(', ')
+                    : 'Aucun autre album'}
+                </span>
+                <button type="button" className="btn btn-sm" disabled={running} onClick={() => setPickingAlsoIn(true)}>
+                  <CopyPlus aria-hidden="true" /> Choisir…
+                </button>
+              </div>
+            </div>
+          )}
           {batch && batchTotals.newAlbums > 0 && (
             <div className="field">
               <span className="field-label">Visibilité des nouveaux albums</span>
@@ -714,6 +762,20 @@ export function UploadPage() {
         )}
       </div>
 
+      <AlbumPickerModal
+        open={pickingAlsoIn}
+        title="Ajouter aussi dans…"
+        description="Les photos importées apparaîtront aussi dans ces albums, sans copie du fichier."
+        albums={albums}
+        initialIds={alsoIn}
+        confirmLabel="Valider"
+        allowEmpty
+        onClose={() => setPickingAlsoIn(false)}
+        onConfirm={(ids) => {
+          setAlsoIn(ids);
+          setPickingAlsoIn(false);
+        }}
+      />
       <AlbumFormModal
         open={creating}
         onClose={() => setCreating(false)}

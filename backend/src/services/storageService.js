@@ -169,8 +169,10 @@ function folderName(name) {
 }
 
 /** "Pictures/<collection>/<album>/…" — the collection level is omitted for albums outside any collection. */
+/** Pictures/<collection>/<parent albums…>/<album>/original|thumbnails/<file>. */
 function photoPaths(album, filename) {
-  const base = ['Pictures', album.collectionName && folderName(album.collectionName), folderName(album.name)]
+  const base = ['Pictures', album.collectionName && folderName(album.collectionName),
+    ...(album.ancestorNames || []).map(folderName), folderName(album.name)]
     .filter(Boolean)
     .join('/');
   return {
