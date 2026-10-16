@@ -67,7 +67,8 @@ async function request(path, { method = 'GET', body, headers = {}, signal } = {}
   return payload?.data ?? null;
 }
 
-const albumHeaders = (password) => (password ? { 'x-album-password': password } : {});
+// A locked collection takes its own password, separate from its albums'.
+const albumHeaders = (password, kind = 'album') => (password ? { [`x-${kind}-password`]: password } : {});
 
 export const api = {
   health: () => request('/api/health'),
@@ -79,7 +80,7 @@ export const api = {
     request('/api/auth/change-password', { method: 'POST', body: { currentPassword, newPassword } }),
 
   listCollections: () => request('/api/collections'),
-  getCollection: (id) => request(`/api/collections/${id}`),
+  getCollection: (id, password) => request(`/api/collections/${id}`, { headers: albumHeaders(password, 'collection') }),
   listCollectionPhotos: (id) => request(`/api/collections/${id}/photos`),
   createCollection: (body) => request('/api/collections', { method: 'POST', body }),
   updateCollection: (id, body) => request(`/api/collections/${id}`, { method: 'PUT', body }),
@@ -87,7 +88,8 @@ export const api = {
   reorderCollections: (ids) => request('/api/collections/order', { method: 'PUT', body: { ids } }),
 
   listAlbums: (options) => request('/api/albums', options),
-  getAlbum: (id, password) => request(`/api/albums/${id}`, { headers: albumHeaders(password) }),
+  // kind 'collection': the password is the one of the album's locked collection.
+  getAlbum: (id, password, kind = 'album') => request(`/api/albums/${id}`, { headers: albumHeaders(password, kind) }),
   listAlbumPhotos: (id, password) => request(`/api/albums/${id}/photos`, { headers: albumHeaders(password) }),
   createAlbum: (body) => request('/api/albums', { method: 'POST', body }),
   updateAlbum: (id, body) => request(`/api/albums/${id}`, { method: 'PUT', body }),

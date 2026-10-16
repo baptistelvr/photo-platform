@@ -98,6 +98,14 @@ Une **collection** regroupe des **albums**, et un album contient des photos, des
 
 Supprimer une collection supprime ses albums et leurs photos. La renommer déplace les fichiers dans le stockage, comme pour un album.
 
+### Verrouiller une collection entière
+
+Dans la fiche d'une collection, l'accès passe de « Ouverte » à « Verrouillée ». Le verrou couvre tout ce qu'elle contient, sous-albums compris, et prend le pas sur le réglage de chaque album : un album public d'une collection verrouillée ne s'ouvre plus pour personne sans y être autorisé.
+
+Avec un mot de passe, la collection fonctionne comme un album protégé. Elle disparaît des listes et de l'accueil, mais son lien affiche une demande de mot de passe (`x-collection-password` côté API) ; une fois saisi, il ouvre la collection et tous ses albums jusqu'à la fin de la session. Si un album de la collection a son propre mot de passe, il est demandé ensuite. Sans mot de passe, la collection est privée : seuls l'administrateur principal, les personnes qui ont la permission « Voir tous les albums protégés » et celles à qui on a donné un album précis (elles ne voient alors que cet album) y ont accès.
+
+Les photos d'une collection verrouillée ne vont jamais sur le mur de l'accueil, et le CDN ne les met pas en cache.
+
 ## Ordre, couvertures et page d'accueil
 
 Les personnes qui ont la permission `EDIT_ALBUMS` voient un bouton **Réorganiser** sur la page des collections, sur chaque collection et sur chaque album. On glisse les cartes ou les photos à la souris, au doigt (après un bref appui, pour que la page défile toujours normalement) ou au clavier (Espace pour saisir, flèches, Espace pour déposer). Chaque changement est enregistré tout de suite.
@@ -142,7 +150,7 @@ Les fichiers restent dans le dossier d'un des albums de la photo, et la suivent 
 
 - **Les textes.** Le titre, la deuxième ligne et le texte de présentation. `{prénom}` est remplacé par le prénom de la personne connectée ; un champ vide reprend le texte par défaut.
 - **Le thème.** Il en existe cinq permanents (Classique, Minuit, Argentique, Océan, Terracotta), quatre de saison (Printemps, Été, Automne, Hiver) et trois de fête (Halloween, Noël, Saint-Valentin), avec couleurs, police de titre, filtre sur les photos et petit décor animé. Le mode **Automatique** change tout seul selon la date. Les décors restent figés pour les personnes qui ont demandé à limiter les animations.
-- **Le fond.** La mosaïque 3D d'origine, un fondu enchaîné plein écran (une grande photo à la fois, avec un lent zoom), une grille vivante dont les photos se renouvellent une à une, des polaroïds éparpillés, deux bandes de pellicule qui défilent, ou un fond uni sans photos. Le fondu charge les photos en taille réelle, les autres fonds se contentent des miniatures.
+- **Le fond.** La mosaïque 3D d'origine, un fondu enchaîné plein écran (une grande photo à la fois, avec un lent zoom), une grille vivante dont les photos se renouvellent une à une, des polaroïds éparpillés sur tout l'écran, trois bandes de pellicule qui défilent, ou un fond uni sans photos. Le texte reste collé au bord gauche de la fenêtre, et le fond occupe tout le premier écran. Le fondu charge les photos en taille réelle, les autres fonds se contentent des miniatures.
 - **Les photos du fond.** Toutes celles des albums publics, ou seulement celles d'albums choisis, sous-albums compris. Pour un mur « best of », il suffit de créer un album Best of et d'y ajouter les meilleures photos depuis la visionneuse. Les albums protégés ne sont jamais montrés sur le mur.
 
 ## Diaporama

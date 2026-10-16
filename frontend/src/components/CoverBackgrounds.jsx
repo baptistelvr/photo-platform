@@ -8,6 +8,12 @@ import { PhotoWall } from './PhotoWall';
    and opacity, so they stay smooth; most pause off-screen with the rest of the cover. */
 
 const prefersReducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+/** A stable pseudo-random number in [0, 1) for item `i`: the same scene on every render. */
+const rand = (i, salt) => {
+  const x = Math.sin(i * 127.1 + salt * 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
 const photoLink = (photo) => `/albums/${photo.albumId}?photo=${photo.id}`;
 
 /** Advances an index every `ms` milliseconds while the page is visible. */
@@ -57,9 +63,9 @@ function SlideBackground({ photos }) {
   );
 }
 
-/** A flat grid; every couple of seconds one cell fades to a photo not shown yet. */
+/** A flat grid over the whole cover; every couple of seconds one cell fades to a photo not shown yet. */
 function GridBackground({ photos }) {
-  const cells = 24;
+  const cells = 30;
   const [shown, setShown] = useState(() => Array.from({ length: cells }, (_, i) => i));
   const tick = useTicker(photos.length > cells ? photos.length : 0, 2200);
 
@@ -87,18 +93,35 @@ function GridBackground({ photos }) {
   );
 }
 
-/** Prints scattered on the right, each slightly turned, floating gently. */
+const PRINT_COLUMNS = 7;
+const PRINT_ROWS = 4;
+
+/**
+ * Prints scattered over the whole cover, a little turned and overlapping, like
+ * on a table. A jittered grid keeps them evenly spread at any window size; the
+ * ones behind the text are dimmed by the cover's veil.
+ */
 function PolaroidBackground({ photos }) {
-  const prints = useMemo(() => Array.from({ length: 11 }, (_, i) => ({
-    photo: photos.length ? photos[i % photos.length] : null,
-    x: [52, 70, 86, 60, 78, 95, 48, 66, 84, 57, 91][i],
-    y: [8, 2, 12, 34, 30, 40, 60, 58, 66, 84, 88][i],
-    r: [-8, 6, -4, 9, -11, 5, -6, 12, -3, 7, -9][i],
-  })), [photos]);
+  const prints = useMemo(() => Array.from({ length: PRINT_COLUMNS * PRINT_ROWS }, (_, i) => {
+    const column = i % PRINT_COLUMNS;
+    const row = Math.floor(i / PRINT_COLUMNS);
+    return {
+      // Odd rows shift by half a column, like bricks, so no straight lines show.
+      x: ((column + (row % 2) * 0.5 + 0.2 + rand(i, 1) * 0.6) / PRINT_COLUMNS) * 104 - 2,
+      y: ((row + 0.1 + rand(i, 2) * 0.55) / PRINT_ROWS) * 100 - 6,
+      r: Math.round(rand(i, 3) * 26 - 13),
+      s: (0.86 + rand(i, 4) * 0.3).toFixed(2),
+      photo: photos.length ? photos[(i * 5) % photos.length] : null,
+    };
+  }), [photos]);
   return (
     <div className="cover-bg cover-prints" aria-hidden="true">
-      {prints.map(({ photo, x, y, r }, i) => (
-        <div key={i} className="print" style={{ '--x': `${x}%`, '--y': `${y}%`, '--r': `${r}deg`, '--d': `${-i * 1.3}s` }}>
+      {prints.map(({ photo, x, y, r, s }, i) => (
+        <div
+          key={i}
+          className="print"
+          style={{ '--x': `${x.toFixed(1)}%`, '--y': `${y.toFixed(1)}%`, '--r': `${r}deg`, '--s': s, '--d': `${(-i * 1.7) % 9}s` }}
+        >
           {photo ? (
             <Link to={photoLink(photo)} tabIndex={-1} draggable={false}>
               <img src={thumbnailUrl(photo.id)} alt="" loading="lazy" draggable={false} />
@@ -110,10 +133,10 @@ function PolaroidBackground({ photos }) {
   );
 }
 
-/** Two strips of 35 mm film crossing the cover in opposite directions. */
+/** Three strips of 35 mm film crossing the whole cover, in alternating directions. */
 function FilmBackground({ photos }) {
-  const strips = [0, 1].map((s) => {
-    const frames = Array.from({ length: 10 }, (_, i) => (photos.length ? photos[(i * 2 + s) % photos.length] : null));
+  const strips = [0, 1, 2].map((s) => {
+    const frames = Array.from({ length: 10 }, (_, i) => (photos.length ? photos[(i * 3 + s) % photos.length] : null));
     return [...frames, ...frames];
   });
   return (

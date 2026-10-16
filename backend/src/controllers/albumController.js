@@ -17,6 +17,8 @@ const accessErrors = {
   password_required: [403, 'ALBUM_PASSWORD_REQUIRED', 'Cet album est protégé par un mot de passe'],
   invalid_password: [403, 'INVALID_ALBUM_PASSWORD', 'Mot de passe incorrect'],
   denied: [403, 'ALBUM_FORBIDDEN', 'Vous n’avez pas accès à cet album'],
+  collection_password_required: [403, 'COLLECTION_PASSWORD_REQUIRED', 'Cette collection est protégée par un mot de passe'],
+  invalid_collection_password: [403, 'INVALID_COLLECTION_PASSWORD', 'Mot de passe incorrect'],
 };
 
 async function assertCollectionExists(collectionId) {

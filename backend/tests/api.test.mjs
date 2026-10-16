@@ -334,6 +334,60 @@ describe('collections', () => {
     expect((await request(app).get('/api/collections/999999/photos')).status).toBe(404);
   });
 
+  it('locks a whole collection, with or without a password, like an album', async () => {
+    const admin = await createUser({ role: 'main_admin' });
+    const agent = await signIn(admin);
+    const locked = (await agent.post('/api/collections').send({ name: 'Famille', visibility: 'protected', password: 'secret-famille' })).body.data;
+    expect(locked).toMatchObject({ visibility: 'protected', hasPassword: true });
+    expect(locked.passwordHash).toBeUndefined();
+    const open = (await agent.post('/api/albums').send({ name: 'Noël', visibility: 'public', collectionId: locked.id })).body.data;
+    const sub = (await agent.post('/api/albums').send({ name: 'Réveillon', visibility: 'public', parentId: open.id })).body.data;
+    const photo = (await agent.post(`/api/albums/${sub.id}/photos`).attach('photos', await jpeg(), { filename: 'sapin.jpg', contentType: 'image/jpeg' })).body.data[0];
+
+    // Visitors see nothing of it: not listed, not on the home wall, albums and photos refused.
+    const visitor = request.agent(app);
+    expect((await visitor.get('/api/collections')).body.data).toEqual([]);
+    expect((await visitor.get('/api/albums')).body.data).toEqual([]);
+    expect((await visitor.get('/api/photos/showcase?limit=10')).body.data.photos).toEqual([]);
+    expect((await visitor.get(`/api/albums/${sub.id}`)).body.error).toBe('COLLECTION_PASSWORD_REQUIRED');
+    expect((await visitor.get(`/api/photos/${photo.id}/thumbnail`)).status).toBe(403);
+    expect((await visitor.get(`/api/collections/${locked.id}`)).body.error).toBe('COLLECTION_PASSWORD_REQUIRED');
+    expect((await visitor.get(`/api/collections/${locked.id}`).set('x-collection-password', 'nope-nope')).body.error).toBe('INVALID_COLLECTION_PASSWORD');
+
+    // The right password opens the collection, its albums and sub-albums for the session.
+    const unlocked = await visitor.get(`/api/collections/${locked.id}`).set('x-collection-password', 'secret-famille');
+    expect(unlocked.status).toBe(200);
+    expect(unlocked.body.data.albums.map((a) => a.name)).toEqual(['Noël']);
+    expect((await visitor.get(`/api/albums/${sub.id}`)).status).toBe(200);
+    const image = await visitor.get(`/api/photos/${photo.id}/thumbnail`);
+    expect(image.status).toBe(200);
+    expect(image.headers['cache-control']).toBe('private, max-age=3600');
+    expect((await visitor.get('/api/collections')).body.data.map((c) => c.name)).toEqual(['Famille']);
+    // Still never on the public home wall.
+    expect((await visitor.get('/api/photos/showcase?limit=10')).body.data.photos).toEqual([]);
+
+    // Starring it on the home page keeps the lock; making it public lifts it.
+    await agent.put(`/api/collections/${locked.id}`).send({ name: 'Famille', featured: true });
+    expect((await request(app).get(`/api/collections/${locked.id}`)).body.error).toBe('COLLECTION_PASSWORD_REQUIRED');
+    const opened = (await agent.put(`/api/collections/${locked.id}`).send({ name: 'Famille', visibility: 'public' })).body.data;
+    expect(opened).toMatchObject({ visibility: 'public', hasPassword: false });
+    expect((await request(app).get(`/api/albums/${sub.id}`)).status).toBe(200);
+
+    // Without a password, it is private: only people allowed in see it.
+    await agent.put(`/api/collections/${locked.id}`).send({ name: 'Famille', visibility: 'protected' });
+    expect((await request(app).get(`/api/collections/${locked.id}`)).status).toBe(404);
+    expect((await request(app).get(`/api/albums/${open.id}`)).body.error).toBe('ALBUM_FORBIDDEN');
+    const viewer = await createUser({ permissions: ['VIEW_PROTECTED_ALBUMS'] });
+    expect((await (await signIn(viewer)).get(`/api/collections/${locked.id}`)).status).toBe(200);
+    // Someone given one album by name gets that album, and only that one.
+    const guest = await createUser();
+    const granted = await agent.put(`/api/users/${guest.id}`).send({ name: guest.name, email: guest.email, accessibleAlbumIds: [sub.id] });
+    expect(granted.body.data.accessibleAlbumIds).toEqual([sub.id]);
+    const guestAgent = await signIn(guest);
+    expect((await guestAgent.get('/api/albums')).body.data.map((a) => a.name)).toEqual(['Réveillon']);
+    expect((await guestAgent.get(`/api/albums/${open.id}`)).status).toBe(403);
+  });
+
   it('moves photo files when a collection is renamed and deletes everything with it', async () => {
     const admin = await createUser({ role: 'main_admin' });
     const agent = await signIn(admin);

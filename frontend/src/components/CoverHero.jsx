@@ -53,7 +53,7 @@ export function CoverHero({
       {ready && <CoverBackground type={background} photos={showcase?.photos} wallRef={wallRef} />}
       <div className="showcase-fade" aria-hidden="true" />
       {skin && <SkinDecor skin={skin} />}
-      <div className="container showcase-content">
+      <div className="showcase-content">
         <div className={`showcase-copy${ready ? '' : ' pending'}`}>
           {showcase?.totalPhotos > 0 && (
             <span className="showcase-pill">

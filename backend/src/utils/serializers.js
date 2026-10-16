@@ -37,6 +37,8 @@ function publicCollection(collection, visibleAlbums = []) {
     name: collection.name,
     description: collection.description || '',
     featured: Boolean(Number(collection.featured)),
+    visibility: collection.visibility || 'public',
+    hasPassword: Boolean(collection.passwordHash),
     albumsCount: top.length,
     photosCount: visibleAlbums.reduce((sum, album) => sum + Number(album.photosCount ?? 0), 0),
     coverPhotoId: cover ? (cover.displayCoverPhotoId ?? cover.coverPhotoId) : null,

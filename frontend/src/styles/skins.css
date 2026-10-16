@@ -427,6 +427,8 @@
 
 /* The admin preview: a small, contained copy of the cover. */
 .showcase.preview {
+  --edge: 24px;
+  --copy-w: min(400px, 55%);
   width: 100%;
   min-height: 380px;
   margin: 0;
@@ -440,7 +442,6 @@
 }
 
 .showcase.preview .showcase-copy {
-  max-width: 420px;
   padding: 28px 0;
 }
 
@@ -551,11 +552,12 @@
 }
 
 /* Grille vivante. */
+/* The whole cover: the veil keeps the text readable on the left. */
 .cover-grid {
-  inset: -3% -3% -3% 30%;
+  inset: -1%;
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  grid-template-rows: repeat(4, 1fr);
+  grid-template-rows: repeat(5, 1fr);
   gap: 10px;
 }
 
@@ -578,25 +580,26 @@
   to { opacity: 1; transform: none; }
 }
 
-/* Polaroïds. */
+/* Polaroïds: positions, turn (--r) and size (--s) come from CoverBackgrounds. */
 .print {
   position: absolute;
   left: var(--x);
   top: var(--y);
-  width: clamp(120px, 13vw, 185px);
+  width: clamp(118px, 11.5vw, 210px);
   padding: 8px 8px 30px;
   border-radius: 3px;
   background: #fdfcf8;
   box-shadow: 0 14px 34px rgba(10, 10, 14, 0.22), 0 2px 6px rgba(10, 10, 14, 0.12);
   translate: -50% 0;
   rotate: var(--r);
+  scale: var(--s, 1);
   animation: print-float 7s ease-in-out var(--d) infinite alternate;
   transition: scale 0.35s var(--ease);
 }
 
 .print:hover {
   z-index: 1;
-  scale: 1.06;
+  scale: calc(var(--s, 1) * 1.08);
 }
 
 .print a,
@@ -615,13 +618,12 @@
   to { translate: -50% -14px; rotate: calc(var(--r) + 2deg); }
 }
 
-/* Pellicule. */
+/* Pellicule: three strips, top to bottom of the cover. */
 .cover-film {
-  inset: -14% -25%;
+  inset: -16% -25%;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 48px;
+  justify-content: space-evenly;
   rotate: -7deg;
 }
 
@@ -638,6 +640,10 @@
 .strip-1 .film-track {
   animation-direction: reverse;
   animation-duration: 85s;
+}
+
+.strip-2 .film-track {
+  animation-duration: 100s;
 }
 
 /* Sprocket holes, scrolling with the frames. */
@@ -662,7 +668,7 @@
 
 .film-frame {
   flex: none;
-  height: clamp(110px, 17vh, 170px);
+  height: clamp(100px, 18vh, 190px);
   aspect-ratio: 3 / 2;
   margin-right: 14px;
   overflow: hidden;
@@ -698,20 +704,23 @@
     display: none;
   }
 
+  /* Two rows of prints above the text, which sits at the bottom. */
   .print {
-    left: calc(var(--x) * 1.8 - 80%);
-    top: calc(var(--y) * 0.5 - 2%);
-    width: 104px;
+    top: calc(var(--y) * 1.15);
+    width: 96px;
     padding: 5px 5px 18px;
+  }
+
+  .print:nth-child(n + 15) {
+    display: none;
   }
 
   .cover-film {
     inset: -6% -40% 34%;
-    gap: 22px;
   }
 
   .film-frame {
-    height: 92px;
+    height: 80px;
   }
 }
 
@@ -726,8 +735,8 @@
 
 /* Smaller pieces in the administration preview. */
 .showcase.preview .print {
-  width: 92px;
-  padding: 5px 5px 16px;
+  width: 72px;
+  padding: 4px 4px 13px;
 }
 
 .showcase.preview .film-frame {
@@ -750,9 +759,6 @@
   bottom: 5px;
 }
 
-.showcase.preview .cover-film {
-  gap: 26px;
-}
 
 .showcase.preview .cover-grid {
   gap: 6px;

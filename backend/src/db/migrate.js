@@ -104,6 +104,9 @@ async function addMissingColumns(query) {
     ['photos', 'sort_order', 'INTEGER'],
     // Sub-albums, as deep as wanted. A sub-album shares its parent's collection.
     ['albums', 'parent_id', 'INTEGER REFERENCES albums(id) ON DELETE CASCADE'],
+    // A whole collection can be locked, with or without a password, like an album.
+    ['collections', 'visibility', "TEXT NOT NULL DEFAULT 'public'"],
+    ['collections', 'password_hash', 'TEXT'],
   ];
   for (const [table, name, definition] of columns) {
     if (!(await hasColumn(query, table, name))) await query(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);

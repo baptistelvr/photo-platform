@@ -1,6 +1,6 @@
 import {
   ArrowDownAZ, ArrowDownUp, ArrowUpToLine, ArrowUpZA, Calendar, ClockArrowDown, ClockArrowUp, FlipVertical2, FolderPlus,
-  FolderTree, Globe, ImagePlus, Images, KeyRound, Link2, Lock, LogIn, Pencil, Play, Star, Trash2, Upload,
+  FolderTree, Globe, ImagePlus, Images, Link2, Lock, LogIn, Pencil, Play, Star, Trash2, Upload,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -9,21 +9,21 @@ import { AlbumFormModal } from '../components/AlbumFormModal';
 import { AlbumPickerModal } from '../components/AlbumPickerModal';
 import { Dropdown } from '../components/Dropdown';
 import { Lightbox } from '../components/Lightbox';
+import { LockedCard } from '../components/LockedCard';
 import { Modal } from '../components/Modal';
 import { ReorderBanner } from '../components/ReorderBanner';
 import { useSlideshow } from '../components/Slideshow';
 import { SortableGrid } from '../components/SortableGrid';
-import { EmptyState, ErrorState, PageHeader, PageLoader, PasswordInput, Spinner } from '../components/ui';
+import { EmptyState, ErrorState, PageHeader, PageLoader, Spinner } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirm } from '../hooks/useConfirm';
 import { useOrderSaver } from '../hooks/useOrderSaver';
 import { useToast } from '../hooks/useToast';
 import { albumLabel, albumOptionLabel, groupAlbumsByCollection } from '../lib/albums';
+import { LOCK_CODES } from '../lib/locks';
 import { api, thumbnailUrl } from '../lib/api';
 import { noDrag } from '../lib/noDrag';
 import { formatDate, pluralize } from '../lib/format';
-
-const LOCKED_CODES = new Set(['ALBUM_PASSWORD_REQUIRED', 'INVALID_ALBUM_PASSWORD']);
 
 const byFileName = new Intl.Collator('fr', { numeric: true, sensitivity: 'base' }).compare;
 const byImport = (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id;
@@ -80,44 +80,6 @@ function GalleryItem({ photo, onOpen, isCover }) {
       />
       {isCover && <span className="cover-star" title="Couverture de l’album"><Star aria-hidden="true" /></span>}
     </button>
-  );
-}
-
-function LockedAlbum({ code, onUnlock }) {
-  const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(code === 'INVALID_ALBUM_PASSWORD' ? 'Mot de passe incorrect.' : '');
-
-  return (
-    <div className="card locked-card">
-      <div className="lock-icon"><KeyRound aria-hidden="true" /></div>
-      <h1 style={{ fontSize: '1.35rem' }}>Album protégé</h1>
-      <p className="muted">Saisissez le mot de passe communiqué par la personne qui vous a partagé cet album.</p>
-      <form
-        onSubmit={async (event) => {
-          event.preventDefault();
-          setBusy(true);
-          setError('');
-          const result = await onUnlock(password);
-          if (result) setError(result);
-          setBusy(false);
-        }}
-      >
-        {error && <div className="alert alert-danger" role="alert">{error}</div>}
-        <PasswordInput
-          id="album-password"
-          value={password}
-          onChange={setPassword}
-          placeholder="Mot de passe de l’album"
-          aria-label="Mot de passe de l’album"
-          autoFocus
-          required
-        />
-        <button type="submit" className="btn btn-primary btn-block" disabled={busy || !password}>
-          {busy && <Spinner />} Déverrouiller
-        </button>
-      </form>
-    </div>
   );
 }
 
@@ -203,18 +165,19 @@ export function AlbumPage() {
   const [creatingSub, setCreatingSub] = useState(false);
   const [reordering, setReordering] = useState(false);
 
-  const load = useCallback(async (password) => {
+  const load = useCallback(async (password, kind) => {
     try {
-      const nextAlbum = await api.getAlbum(id, password);
+      const nextAlbum = await api.getAlbum(id, password, kind);
       const nextPhotos = await api.listAlbumPhotos(id);
       setAlbum(nextAlbum);
       setPhotos(nextPhotos);
       setStatus({ state: 'ready' });
       return null;
     } catch (error) {
-      if (LOCKED_CODES.has(error.code)) {
-        setStatus({ state: 'locked', code: error.code });
-        return error.code === 'INVALID_ALBUM_PASSWORD' ? 'Mot de passe incorrect.' : null;
+      // The collection's password first, if it is locked, then the album's own.
+      if (LOCK_CODES[error.code]) {
+        setStatus({ state: 'locked', ...LOCK_CODES[error.code] });
+        return LOCK_CODES[error.code].invalid ? 'Mot de passe incorrect.' : null;
       }
       setStatus({ state: 'error', error });
       return error.message;
@@ -256,7 +219,9 @@ export function AlbumPage() {
   const slideshow = useSlideshow({ title: album?.name || '', count: photos.length, loadPhotos: async () => photos });
 
   if (status.state === 'loading') return <PageLoader />;
-  if (status.state === 'locked') return <LockedAlbum code={status.code} onUnlock={load} />;
+  if (status.state === 'locked') {
+    return <LockedCard key={status.kind} kind={status.kind} invalid={status.invalid} onUnlock={(password) => load(password, status.kind)} />;
+  }
   if (status.state === 'error') {
     const { error } = status;
     if (error.code === 'ALBUM_FORBIDDEN') {
