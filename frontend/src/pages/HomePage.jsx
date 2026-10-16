@@ -10,6 +10,27 @@ import { api } from '../lib/api';
 
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/**
+ * Width of the page's scrollbar, for the full-bleed cover: 100vw counts it in
+ * browsers where scrollbars take room (Windows, most Linux), not elsewhere.
+ * Measured again whenever it appears or goes, as the page fills up.
+ */
+function useScrollbarWidth() {
+  useEffect(() => {
+    const root = document.documentElement;
+    const measure = () => root.style.setProperty('--scrollbar', `${Math.max(0, window.innerWidth - root.clientWidth)}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+      root.style.removeProperty('--scrollbar');
+    };
+  }, []);
+}
+
 /** Tilts the wall towards the mouse and pauses it while the hero is off-screen. */
 function useShowcaseMotion(sectionRef, wallRef) {
   const frame = useRef(0);
@@ -55,6 +76,7 @@ export function HomePage() {
   const sectionRef = useRef(null);
   const wallRef = useRef(null);
   const motion = useShowcaseMotion(sectionRef, wallRef);
+  useScrollbarWidth();
   const loading = loadingCollections || loadingAlbums;
   // Collections first; albums only while nothing is organised in collections yet.
   const showCollections = loading || collections?.length > 0;

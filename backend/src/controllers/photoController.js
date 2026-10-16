@@ -5,7 +5,7 @@ const albumRepository = require('../repositories/albumRepository');
 const { addAuditLog } = require('../repositories/auditRepository');
 const photoRepository = require('../repositories/photoRepository');
 const settingsRepository = require('../repositories/settingsRepository');
-const { resolveAlbumAccess } = require('../services/accessService');
+const { isOpenToEveryone, resolveAlbumAccess } = require('../services/accessService');
 const { rehomePhoto } = require('../services/albumService');
 const { normalizeJpeg } = require('../services/imageService');
 const storageService = require('../services/storageService');
@@ -33,7 +33,7 @@ async function loadPhoto(id) {
  */
 async function loadReadablePhotoAlbum(req, photo) {
   const albums = await albumRepository.listAlbumsOfPhoto(photo.id);
-  const open = albums.find((album) => album.visibility === 'public');
+  const open = albums.find(isOpenToEveryone);
   if (open) return open;
   let refusal = null;
   for (const album of albums) {
@@ -115,7 +115,7 @@ function streamVariant(variant) {
       // A photo id always maps to the same pixels. Public albums may be cached by
       // Vercel's CDN (one function call serves every visitor); anything else stays
       // in the viewer's browser only, briefly, so revoked access does not linger.
-      res.type('image/jpeg').set('Cache-Control', album.visibility === 'public'
+      res.type('image/jpeg').set('Cache-Control', isOpenToEveryone(album)
         ? 'public, max-age=3600, s-maxage=3600'
         : 'private, max-age=3600');
       if (variant === 'file' && req.query.download === '1') {

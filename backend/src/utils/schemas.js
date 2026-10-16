@@ -27,10 +27,14 @@ const albumSchema = z.object({
   parentId: id.nullable().optional(),
 });
 
+// Visibility and password are optional on update: leaving them out keeps the current lock.
 const collectionSchema = z.object({
   name: trimmed(120).min(1, 'Nom requis'),
   description: trimmed(1000).optional().or(z.literal('')),
   featured: z.boolean().optional(),
+  visibility: z.enum(['public', 'protected']).optional(),
+  password: password.optional().or(z.literal('')),
+  removePassword: z.boolean().optional(),
 });
 
 // Ids in their new order. Duplicates are refused.

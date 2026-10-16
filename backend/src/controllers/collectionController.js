@@ -2,14 +2,16 @@ const db = require('../config/db');
 const albumRepository = require('../repositories/albumRepository');
 const { addAuditLog } = require('../repositories/auditRepository');
 const collectionRepository = require('../repositories/collectionRepository');
-const { hasPermission } = require('../services/accessService');
+const { hasPermission, resolveCollectionAccess } = require('../services/accessService');
 const { destroyAlbums, relocateAlbumPhotos, visibleAlbumTree } = require('../services/albumService');
 const { PERMISSIONS } = require('../constants/permissions');
 const { HttpError } = require('../utils/httpError');
 const { parseId } = require('../utils/params');
+const { hashPassword } = require('../utils/password');
 const { mergeOrder } = require('../utils/order');
 const { collectionSchema, orderSchema } = require('../utils/schemas');
 const { publicAlbum, publicCollection, publicPhoto } = require('../utils/serializers');
+const { accessErrors } = require('./albumController');
 
 const MANAGE = [PERMISSIONS.CREATE_ALBUMS, PERMISSIONS.EDIT_ALBUMS, PERMISSIONS.DELETE_ALBUMS];
 const canManage = (user) => MANAGE.some((permission) => hasPermission(user, permission));
@@ -30,6 +32,33 @@ async function loadCollection(id) {
   const collection = await collectionRepository.getCollectionById(parseId(id, 'Collection'));
   if (!collection) throw new HttpError(404, 'NOT_FOUND', 'Collection introuvable');
   return collection;
+}
+
+const notFound = () => new HttpError(404, 'NOT_FOUND', 'Collection introuvable');
+
+/**
+ * The albums of the collection this viewer may open. A locked collection asks
+ * for its password first (a correct one opens it for the session). Nothing
+ * visible and no password to ask: same answer as a missing collection, so locked
+ * collections are not revealed. Album managers still get the empty shell.
+ */
+async function loadCollectionAlbums(req, collection) {
+  const entry = await resolveCollectionAccess(req, collection);
+  const albums = (await visibleAlbumsByCollection(req)).get(collection.id) || [];
+  if (albums.length) return albums;
+  if (entry === 'collection_password_required' || entry === 'invalid_collection_password') {
+    const [status, code, message] = accessErrors[entry];
+    throw new HttpError(status, code, message);
+  }
+  if (!canManage(req.user)) throw notFound();
+  return albums;
+}
+
+/** Password hash to store, from the form: kept, replaced, or dropped when the collection is public again. */
+async function collectionPasswordHash(payload, visibility, current) {
+  if (visibility === 'public' || payload.removePassword) return null;
+  if (payload.password) return hashPassword(payload.password);
+  return current?.passwordHash ?? null;
 }
 
 /**
@@ -58,9 +87,7 @@ async function listCollections(req, res, next) {
 async function getCollection(req, res, next) {
   try {
     const collection = await loadCollection(req.params.id);
-    const albums = (await visibleAlbumsByCollection(req)).get(collection.id) || [];
-    // Same answer as a missing collection: do not reveal ones the viewer cannot see.
-    if (!albums.length && !canManage(req.user)) throw new HttpError(404, 'NOT_FOUND', 'Collection introuvable');
+    const albums = await loadCollectionAlbums(req, collection);
     res.set('Cache-Control', 'no-store');
     res.json({
       success: true,
@@ -82,8 +109,7 @@ async function getCollection(req, res, next) {
 async function listCollectionPhotos(req, res, next) {
   try {
     const collection = await loadCollection(req.params.id);
-    const albums = (await visibleAlbumsByCollection(req)).get(collection.id) || [];
-    if (!albums.length && !canManage(req.user)) throw new HttpError(404, 'NOT_FOUND', 'Collection introuvable');
+    const albums = await loadCollectionAlbums(req, collection);
 
     const byAlbum = new Map(albums.map((album) => [album.id, []]));
     for (const photo of await albumRepository.listPhotosOfAlbums(albums.map((album) => album.id))) {
@@ -104,7 +130,12 @@ async function listCollectionPhotos(req, res, next) {
 async function createCollection(req, res, next) {
   try {
     const payload = collectionSchema.parse(req.body);
-    const collection = await collectionRepository.createCollection(payload);
+    const visibility = payload.visibility || 'public';
+    const collection = await collectionRepository.createCollection({
+      ...payload,
+      visibility,
+      passwordHash: await collectionPasswordHash(payload, visibility),
+    });
     await addAuditLog({ actorId: req.user.id, action: 'COLLECTION_CREATE', objectType: 'collection', objectId: String(collection.id), metadata: { name: collection.name }, ipAddress: req.ip });
     res.status(201).json({ success: true, data: publicCollection(collection) });
   } catch (error) {
@@ -116,9 +147,12 @@ async function updateCollection(req, res, next) {
   try {
     const current = await loadCollection(req.params.id);
     const payload = collectionSchema.parse(req.body);
+    const visibility = payload.visibility || current.visibility || 'public';
     const updated = await collectionRepository.updateCollection(current.id, {
       ...payload,
       featured: payload.featured ?? Boolean(Number(current.featured)),
+      visibility,
+      passwordHash: await collectionPasswordHash(payload, visibility, current),
     });
 
     // The collection name is part of every photo path inside it (sub-albums follow their parent).
@@ -129,7 +163,7 @@ async function updateCollection(req, res, next) {
       }
     }
 
-    await addAuditLog({ actorId: req.user.id, action: 'COLLECTION_UPDATE', objectType: 'collection', objectId: String(current.id), metadata: { name: updated.name }, ipAddress: req.ip });
+    await addAuditLog({ actorId: req.user.id, action: 'COLLECTION_UPDATE', objectType: 'collection', objectId: String(current.id), metadata: { name: updated.name, visibility }, ipAddress: req.ip });
     const albums = (await visibleAlbumsByCollection(req)).get(current.id) || [];
     res.json({ success: true, data: publicCollection(updated, albums) });
   } catch (error) {

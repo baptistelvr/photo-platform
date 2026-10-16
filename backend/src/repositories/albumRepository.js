@@ -6,6 +6,7 @@ const { writeOrder } = require('./orderRepository');
 const albumColumns = `a.id, a.name, a.description, a.visibility, a.sort_order AS "sortOrder",
   a.password_hash AS "passwordHash", a.created_at AS "createdAt", a.updated_at AS "updatedAt",
   a.collection_id AS "collectionId", c.name AS "collectionName", a.parent_id AS "parentId",
+  c.visibility AS "collectionVisibility", c.password_hash AS "collectionPasswordHash",
   CAST((SELECT COUNT(*) FROM album_photos ap WHERE ap.album_id = a.id) AS INTEGER) AS "photosCount",
   (SELECT ap.photo_id FROM album_photos ap WHERE ap.album_id = a.id ORDER BY ap.sort_order, ap.photo_id LIMIT 1) AS "coverPhotoId"`;
 
@@ -172,7 +173,9 @@ async function listPhotosOfAlbums(albumIds) {
 /** Albums a photo appears in, with what access checks need. */
 async function listAlbumsOfPhoto(photoId) {
   const { rows } = await query(`SELECT a.id, a.name, a.visibility, a.password_hash AS "passwordHash",
-    a.collection_id AS "collectionId" FROM album_photos ap JOIN albums a ON a.id = ap.album_id
+    a.collection_id AS "collectionId", c.visibility AS "collectionVisibility",
+    c.password_hash AS "collectionPasswordHash"
+    FROM album_photos ap JOIN albums a ON a.id = ap.album_id LEFT JOIN collections c ON c.id = a.collection_id
     WHERE ap.photo_id = $1 ORDER BY a.id`, [photoId]);
   return rows;
 }
@@ -192,9 +195,10 @@ async function setAlbumAccess(albumId, userIds) {
 async function setUserAlbumAccess(userId, albumIds) {
   await query('DELETE FROM album_access WHERE user_id = $1', [userId]);
   for (const albumId of new Set(albumIds)) {
+    // Placeholders in reading order: the SQLite adapter binds them by position.
     await query(
-      'INSERT INTO album_access (album_id, user_id) SELECT id, $2 FROM albums WHERE id = $1 ON CONFLICT DO NOTHING',
-      [albumId, userId],
+      'INSERT INTO album_access (album_id, user_id) SELECT id, CAST($1 AS INTEGER) FROM albums WHERE id = $2 ON CONFLICT DO NOTHING',
+      [userId, albumId],
     );
   }
 }

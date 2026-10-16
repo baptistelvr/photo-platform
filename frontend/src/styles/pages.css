@@ -1,13 +1,20 @@
 /* ---------- Home: 3D photo wall ---------- */
 .showcase {
+  /* The copy sits against the left edge of the window, whatever its width;
+     the photos get the rest. --copy-w and --edge also shape the fade. */
+  --edge: clamp(16px, 3.2vw, 56px);
+  --copy-w: min(540px, 42vw);
   position: relative;
   isolation: isolate;
   display: flex;
   align-items: center;
-  /* Full-bleed: break out of the centred container and up to the header. */
-  width: 100vw;
-  min-height: clamp(540px, 80vh, 800px);
-  margin: -32px calc(50% - 50vw) 56px;
+  /* Full-bleed: break out of the centred container and up to the header.
+     --scrollbar (set by the home page) keeps 100vw from overflowing where
+     scrollbars take room, so the left edge is the real edge in every browser. */
+  width: calc(100vw - var(--scrollbar, 0px));
+  /* The whole first screen, under the header. */
+  min-height: max(540px, calc(100svh - var(--header-height)));
+  margin: -32px calc(50% - 50vw + var(--scrollbar, 0px) / 2) 56px;
   overflow: hidden;
 }
 
@@ -95,26 +102,32 @@ a.wall-tile:hover {
   box-shadow: none;
 }
 
-/* Fades the wall into the page so the text stays readable. */
+/* A veil behind the copy only, so the text reads well and the photos stay
+   clear on the rest of the screen. */
 .showcase-fade {
   position: absolute;
   inset: 0;
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 62% 85% at 16% 52%, var(--bg) 0%, color-mix(in srgb, var(--bg) 88%, transparent) 40%, transparent 74%),
-    linear-gradient(90deg, color-mix(in srgb, var(--bg) 60%, transparent) 0%, transparent 55%),
-    linear-gradient(180deg, var(--bg) 0%, transparent 14%, transparent 80%, var(--bg) 100%);
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--bg) 90%, transparent) 0%,
+      color-mix(in srgb, var(--bg) 80%, transparent) calc(var(--edge) + var(--copy-w) * 0.8),
+      color-mix(in srgb, var(--bg) 35%, transparent) calc(var(--edge) + var(--copy-w) + 70px),
+      transparent calc(var(--edge) + var(--copy-w) + 220px)),
+    linear-gradient(180deg, var(--bg) 0%, transparent 9%, transparent 88%, var(--bg) 100%);
 }
 
 /* The copy blocks clicks only where it is; the photos around it stay clickable. */
 .showcase-content {
   position: relative;
+  width: 100%;
+  padding: 0 var(--edge);
   pointer-events: none;
 }
 
 .showcase-copy {
-  max-width: 600px;
+  max-width: var(--copy-w);
   padding: 40px 0;
   pointer-events: auto;
 }
@@ -164,8 +177,9 @@ a.wall-tile:hover {
 
 @media (max-width: 820px) {
   .showcase {
+    --copy-w: 100%;
     align-items: flex-end;
-    min-height: max(600px, 88svh);
+    min-height: max(600px, calc(100svh - var(--header-height)));
   }
 
   .photo-wall {

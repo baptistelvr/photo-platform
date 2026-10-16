@@ -66,11 +66,16 @@ async function updatePaths(photoId, paths) {
  * Where the home page wall takes its photos: every public album, or only the
  * chosen ones (still public only). A photo seen through several of them counts once.
  */
+// Open to everyone: a public album outside any locked collection.
+const OPEN_ALBUM = "a.visibility = 'public' AND COALESCE(c.visibility, 'public') = 'public'";
+const SHOWCASE_FROM = `photos p JOIN album_photos ap ON ap.photo_id = p.id JOIN albums a ON a.id = ap.album_id
+    LEFT JOIN collections c ON c.id = a.collection_id`;
+
 function showcaseFilter(albumIds) {
-  if (!albumIds) return { where: "a.visibility = 'public'", params: [] };
+  if (!albumIds) return { where: OPEN_ALBUM, params: [] };
   if (!albumIds.length) return { where: '1 = 0', params: [] };
   return {
-    where: `a.visibility = 'public' AND a.id IN (${albumIds.map((_, i) => `$${i + 1}`).join(', ')})`,
+    where: `${OPEN_ALBUM} AND a.id IN (${albumIds.map((_, i) => `$${i + 1}`).join(', ')})`,
     params: albumIds,
   };
 }
@@ -78,7 +83,7 @@ function showcaseFilter(albumIds) {
 async function listPublicShowcase(limit, albumIds = null) {
   const { where, params } = showcaseFilter(albumIds);
   const { rows } = await query(`SELECT p.id, MIN(a.id) AS "albumId", p.width, p.height
-    FROM photos p JOIN album_photos ap ON ap.photo_id = p.id JOIN albums a ON a.id = ap.album_id
+    FROM ${SHOWCASE_FROM}
     WHERE ${where} GROUP BY p.id, p.width, p.height ORDER BY RANDOM() LIMIT $${params.length + 1}`, [...params, limit]);
   return rows;
 }
@@ -87,7 +92,7 @@ async function publicTotals(albumIds = null) {
   const { where, params } = showcaseFilter(albumIds);
   const { rows } = await query(`SELECT CAST(COUNT(DISTINCT p.id) AS INTEGER) AS photos,
     CAST(COUNT(DISTINCT a.id) AS INTEGER) AS albums
-    FROM photos p JOIN album_photos ap ON ap.photo_id = p.id JOIN albums a ON a.id = ap.album_id WHERE ${where}`, params);
+    FROM ${SHOWCASE_FROM} WHERE ${where}`, params);
   return rows[0];
 }
 

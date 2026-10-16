@@ -64,7 +64,9 @@ export function CollectionCard({ collection, asStatic = false, corner = null }) 
       <div className="album-cover">
         <CoverImage photoId={collection.coverPhotoId} />
         <span className="cover-badge">
-          <Library aria-hidden="true" /> {pluralize(collection.albumsCount, 'album')}
+          {collection.visibility === 'protected' ? <Lock aria-hidden="true" /> : <Library aria-hidden="true" />}
+          {pluralize(collection.albumsCount, 'album')}
+          {collection.visibility === 'protected' && ' · verrouillée'}
         </span>
         {corner && <div className="cover-corner">{corner}</div>}
       </div>

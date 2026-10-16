@@ -1,9 +1,10 @@
-import { ArrowDownUp, FolderPlus, Images, Library, Pencil, Play, Star, Trash2, Upload } from 'lucide-react';
+import { ArrowDownUp, FolderPlus, Images, KeyRound, Library, Lock, Pencil, Play, Star, Trash2, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AlbumCard, AlbumGrid } from '../components/AlbumCard';
 import { AlbumFormModal } from '../components/AlbumFormModal';
 import { CollectionFormModal } from '../components/CollectionFormModal';
+import { LockedCard } from '../components/LockedCard';
 import { ReorderBanner } from '../components/ReorderBanner';
 import { SortableGrid } from '../components/SortableGrid';
 import { useSlideshow } from '../components/Slideshow';
@@ -13,6 +14,7 @@ import { useConfirm } from '../hooks/useConfirm';
 import { useFetch } from '../hooks/useFetch';
 import { useOrderSaver } from '../hooks/useOrderSaver';
 import { useToast } from '../hooks/useToast';
+import { LOCK_CODES } from '../lib/locks';
 import { api } from '../lib/api';
 import { pluralize } from '../lib/format';
 
@@ -41,6 +43,23 @@ export function CollectionPage() {
 
   if (loading && !collection) return <PageLoader />;
   if (error && !collection) {
+    if (LOCK_CODES[error.code]) {
+      return (
+        <LockedCard
+          kind="collection"
+          invalid={LOCK_CODES[error.code].invalid}
+          onUnlock={async (password) => {
+            try {
+              // The server remembers it for the session: albums and photos follow.
+              setData(await api.getCollection(id, password));
+              return null;
+            } catch (err) {
+              return err.code === 'INVALID_COLLECTION_PASSWORD' ? 'Mot de passe incorrect.' : err.message;
+            }
+          }}
+        />
+      );
+    }
     if (error.status === 404) {
       return (
         <EmptyState icon={Library} title="Collection introuvable" action={<Link to="/collections" className="btn">Retour aux collections</Link>}>
@@ -111,6 +130,12 @@ export function CollectionPage() {
         <div className="album-stats">
           <span className="badge"><Library aria-hidden="true" />{pluralize(collection.albumsCount, 'album')}</span>
           <span className="badge"><Images aria-hidden="true" />{pluralize(collection.photosCount, 'photo')}</span>
+          {collection.visibility === 'protected' && (
+            <span className="badge" title="Verrouillée : tous ses albums suivent">
+              {collection.hasPassword ? <KeyRound aria-hidden="true" /> : <Lock aria-hidden="true" />}
+              {collection.hasPassword ? 'Protégée par mot de passe' : 'Privée'}
+            </span>
+          )}
         </div>
       </PageHeader>
 
